@@ -1,0 +1,70 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Note that some adapters may set a maximum length for the String type by default, please ensure your strings are long
+// enough when changing adapters.
+// See https://www.prisma.io/docs/orm/reference/prisma-schema-reference#string for more information
+datasource db {
+  provider = "sqlite"
+  url      = "file:dev.sqlite"
+}
+
+model Session {
+  id            String    @id
+  shop          String
+  state         String
+  isOnline      Boolean   @default(false)
+  scope         String?
+  expires       DateTime?
+  accessToken   String
+  userId        BigInt?
+  firstName     String?
+  lastName      String?
+  email         String?
+  accountOwner  Boolean   @default(false)
+  locale        String?
+  collaborator  Boolean?  @default(false)
+  emailVerified Boolean?  @default(false)
+}
+
+model Subscription {
+  id                      Int       @id @default(autoincrement())
+  shopify_url             String    @unique
+  shopify_subscription_id String?
+  charge_id               String?
+  plan_id                 String    @default("free")
+  plan_name               String    @default("Free")
+  plan_price              Float     @default(0)
+  max_active_offers       Int       @default(2)
+  max_impressions_monthly Int       @default(100)
+  is_active               Boolean   @default(false)
+  started_at              DateTime  @default(now())
+  expires_at              DateTime?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  // Relations
+  analytics               Analytics[]
+}
+
+model Analytics {
+  id                String        @id @default(cuid())
+  shopify_url       String
+  offer_id          String?
+  date              DateTime      @default(now())
+  impressions       Int           @default(0)
+  views             Int           @default(0)
+  clicks            Int           @default(0)
+  conversions       Int           @default(0)
+  revenue           Float         @default(0)
+  conversion_rate   Float         @default(0)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  // Relations
+  subscription      Subscription  @relation(fields: [shopify_url], references: [shopify_url])
+}

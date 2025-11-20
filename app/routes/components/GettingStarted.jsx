@@ -1,0 +1,123 @@
+import React from 'react';
+import { Card, BlockStack, InlineStack, Text, Button, Icon } from '@shopify/polaris';
+import { CheckCircleIcon } from '@shopify/polaris-icons';
+
+export function GettingStarted({ onNavigate }) {
+  // In a real app, these would be based on actual user progress
+  const steps = [
+    {
+      title: 'Choose your plan',
+      description: 'Select a plan that fits your business needs',
+      completed: false,
+      action: () => onNavigate('plans'),
+      actionLabel: 'View Plans',
+    },
+    {
+      title: 'Create your first offer',
+      description: 'Set up a post-purchase offer to boost your revenue',
+      completed: false,
+      action: () => onNavigate('create-offer'),
+      actionLabel: 'Create Offer',
+    },
+    {
+      title: 'Configure targeting rules',
+      description: 'Define when and to whom your offers will be shown',
+      completed: false,
+      action: () => onNavigate('create-offer'),
+      actionLabel: 'Set Rules',
+    },
+    {
+      title: 'Monitor performance',
+      description: 'Track your offers and optimize for better results',
+      completed: false,
+      action: () => onNavigate('analytics'),
+      actionLabel: 'View Analytics',
+    },
+  ];
+
+  const completedSteps = steps.filter((step) => step.completed).length;
+  const progress = (completedSteps / steps.length) * 100;
+
+  return (
+    <Card>
+      <BlockStack gap="400">
+        <BlockStack gap="200">
+          <Text as="h2" variant="headingMd">
+            Getting Started
+          </Text>
+          <Text as="p" variant="bodyMd" tone="subdued">
+            Complete these steps to start maximizing your revenue with post-purchase offers
+          </Text>
+        </BlockStack>
+
+        <div style={{ height: '8px', backgroundColor: '#e4e5e7', borderRadius: '4px', overflow: 'hidden' }}>
+          <div
+            style={{
+              height: '100%',
+              width: `${progress}%`,
+              backgroundColor: '#008060',
+              transition: 'width 0.3s ease',
+            }}
+          />
+        </div>
+
+        <Text as="p" variant="bodySm" tone="subdued">
+          {completedSteps} of {steps.length} steps completed
+        </Text>
+
+        <BlockStack gap="300">
+          {steps.map((step, index) => (
+            <div
+              key={index}
+              style={{
+                padding: '12px',
+                border: '1px solid #e4e5e7',
+                borderRadius: '8px',
+                backgroundColor: step.completed ? '#f6f6f7' : '#ffffff',
+              }}
+            >
+              <InlineStack align="space-between" blockAlign="center">
+                <InlineStack gap="300" blockAlign="center">
+                  {step.completed ? (
+                    <div style={{ color: '#008060' }}>
+                      <Icon source={CheckCircleIcon} />
+                    </div>
+                  ) : (
+                    <div
+                      style={{
+                        width: '20px',
+                        height: '20px',
+                        borderRadius: '50%',
+                        border: '2px solid #c4cdd5',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: '#637381',
+                        fontSize: '12px',
+                      }}
+                    >
+                      {index + 1}
+                    </div>
+                  )}
+                  <BlockStack gap="100">
+                    <Text as="p" variant="bodyMd" fontWeight="semibold">
+                      {step.title}
+                    </Text>
+                    <Text as="p" variant="bodySm" tone="subdued">
+                      {step.description}
+                    </Text>
+                  </BlockStack>
+                </InlineStack>
+                {!step.completed && step.action && (
+                  <Button size="slim" onClick={step.action}>
+                    {step.actionLabel}
+                  </Button>
+                )}
+              </InlineStack>
+            </div>
+          ))}
+        </BlockStack>
+      </BlockStack>
+    </Card>
+  );
+}
