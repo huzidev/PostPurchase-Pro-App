@@ -2,7 +2,7 @@
 
 client_id = "23dc6fedf5b22e45b3316d166cfd1593"
 name = "PostPurchase Pro"
-application_url = "https://example.com"
+application_url = "post-purchase-pro-app.vercel.app"
 embedded = true
 
 [build]
@@ -24,4 +24,6 @@ api_version = "2026-01"
 scopes = "write_products"
 
 [auth]
-redirect_urls = [ "https://example.com/api/auth" ]
+redirect_urls = ["https://post-purchase-pro-app.vercel.app/auth/callback",
+ "https://post-purchase-pro-app.vercel.app/auth/shopify/callback",
+ "https://post-purchase-pro-app.vercel.app/api/auth/callback"]
