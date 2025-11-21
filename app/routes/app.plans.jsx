@@ -15,11 +15,11 @@ export const loader = async ({ request }) => {
   const planName = url.searchParams.get('planName');
   const price = url.searchParams.get('price');
   
-  if (plan && planName && price) {
-    try {
-      const subscriptionService = new Subscription(session.shop, null);
-      
-      // Get active Shopify subscription to get the subscription ID
+  try {
+    const subscriptionService = new Subscription(session.shop, null);
+    
+    if (plan && planName && price) {
+      // Handle subscription success callback
       const activeSubscription = await subscriptionService.getActiveSubscription(session.shop, session.accessToken);
       
       if (activeSubscription.status === 200 && activeSubscription.subscriptions.length > 0) {
@@ -28,9 +28,12 @@ export const loader = async ({ request }) => {
         // Update database with successful subscription
         await subscriptionService.createSubscription(plan, shopifySubId, null);
       }
-    } catch (error) {
-      console.error("Error handling subscription success:", error);
+    } else {
+      // Sync database with Shopify subscription on every load to prevent discrepancies
+      await subscriptionService.syncWithShopifySubscription(session.shop, session.accessToken);
     }
+  } catch (error) {
+    console.error("Error handling subscription:", error);
   }
   
   return { plan, planName, price };

@@ -1,58 +1,88 @@
 import React from 'react';
 import { authenticate } from "../shopify.server";
-import { useNavigate, useLoaderData } from 'react-router';
+import { useNavigate, useLoaderData, useParams } from 'react-router';
+import { Page, Card, Text, Button } from '@shopify/polaris';
 import { OfferForm } from './components/OfferForm';
 import Offer from "../models/offer.server";
 import Subscription from "../models/subscription.server";
 
-export const loader = async ({ request }) => {
+export const loader = async ({ request, params }) => {
   const { session, admin } = await authenticate.admin(request);
+  const offerId = params.id;
+  
+  // Validate that we have an offer ID
+  if (!offerId) {
+    return {
+      offer: null,
+      shopUrl: session.shop,
+      canSaveOffer: true,
+      subscription: null,
+      usage: null,
+      error: "No offer ID provided",
+    };
+  }
   
   try {
-    // Ensure subscription exists and check offer limits
+    // Ensure subscription exists and check subscription for upgrade prompts
     const subscriptionService = new Subscription(session.shop, admin.graphql);
     
-    // Ensure a subscription exists without overriding paid plans
+    // Ensure subscription exists without overriding paid plans
     await subscriptionService.ensureSubscriptionExists();
     
-    const canCreateResult = await subscriptionService.canPerformAction('create_offer');
-    
-    // Get subscription details for display
     const subscriptionResult = await subscriptionService.getSubscriptionWithUsage();
     
+    // Fetch the offer to edit
+    const offerService = new Offer(session.shop);
+    const offerResult = await offerService.getOffer(offerId);
+    
+    if (offerResult.status !== 200) {
+      throw new Error(offerResult.message || 'Offer not found');
+    }
+    
+    // Check if user can activate offers (for limit warning)
+    const canCreateResult = await subscriptionService.canPerformAction('create_offer');
+    
     return {
+      offer: offerResult.offer,
       shopUrl: session.shop,
-      canCreateOffer: true, // Always allow creating offers
+      canSaveOffer: true, // Editing existing offers is always allowed
       isLimitReached: !canCreateResult.allowed,
       offerLimitMessage: canCreateResult.message,
       subscription: subscriptionResult.subscription,
       usage: subscriptionResult.usage,
     };
   } catch (error) {
-    console.error("Error in loader:", error);
+    console.error("Error in edit offer loader:", error);
     return {
+      offer: null,
       shopUrl: session.shop,
-      canCreateOffer: false,
-      offerLimitMessage: "Error checking subscription status",
+      canSaveOffer: true,
       subscription: null,
       usage: null,
+      error: error.message,
     };
   }
 };
 
-export const action = async ({ request }) => {
-  const { session, admin } = await authenticate.admin(request);
+export const action = async ({ request, params }) => {
+  const { session } = await authenticate.admin(request);
   const formData = await request.formData();
   const intent = formData.get("intent");
+  const offerId = params.id;
   
-  if (intent === "save-offer") {
+  // Validate that we have an offer ID
+  if (!offerId) {
+    return Response.json({
+      status: 400,
+      message: "No offer ID provided",
+      error: "Missing offer ID",
+    });
+  }
+  
+  if (intent === "update-offer") {
     try {
-      // Ensure subscription exists and check if user can create more offers
-      const subscriptionService = new Subscription(session.shop, admin.graphql);
-      
-      // Ensure subscription exists without overriding paid plans
-      await subscriptionService.ensureSubscriptionExists();
-      
+      // Check if user can activate offers when trying to set status to active
+      const subscriptionService = new Subscription(session.shop, null);
       const canCreateResult = await subscriptionService.canPerformAction('create_offer');
       
       const offerService = new Offer(session.shop);
@@ -78,12 +108,12 @@ export const action = async ({ request }) => {
         products: JSON.parse(formData.get("products") || "[]"),
       };
       
-      const result = await offerService.createOffer(offerData);
+      const result = await offerService.updateOffer(offerId, offerData);
       
       if (result.status === 200) {
         const toastMessage = !canCreateResult.allowed && requestedStatus === 'active' 
-          ? "Offer created but set to paused due to plan limits. Upgrade to activate it."
-          : "Offer created successfully!";
+          ? "Offer updated but set to paused due to plan limits. Upgrade to activate it."
+          : "Offer updated successfully!";
           
         return Response.json({
           ...result,
@@ -95,20 +125,10 @@ export const action = async ({ request }) => {
       
       return Response.json(result);
     } catch (error) {
-      console.error("Error saving offer:", error);
-      
-      // Handle specific database constraint errors
-      if (error.code === 'P2003') {
-        return Response.json({
-          status: 500,
-          message: "Database constraint error. Please ensure you have a valid subscription.",
-          error: error.message,
-        });
-      }
-      
+      console.error("Error updating offer:", error);
       return Response.json({
         status: 500,
-        message: "Failed to save offer",
+        message: "Failed to update offer",
         error: error.message,
       });
     }
@@ -117,14 +137,16 @@ export const action = async ({ request }) => {
   return Response.json({ status: 400, message: "Invalid intent" });
 };
 
-export default function CreateOfferRoute() {
+export default function EditOfferRoute() {
   const navigate = useNavigate();
   const { 
-    canCreateOffer, 
+    offer,
+    canSaveOffer,
     isLimitReached,
-    offerLimitMessage, 
+    offerLimitMessage,
     subscription, 
-    usage 
+    usage,
+    error 
   } = useLoaderData();
 
   const onNavigate = (page) => {
@@ -144,11 +166,26 @@ export default function CreateOfferRoute() {
 
   const onSaved = () => navigate('/app/offers');
 
+  if (error || !offer) {
+    return (
+      <Page title="Edit Offer">
+        <Card>
+          <Text>Error: {error || 'Offer not found'}</Text>
+          <Button onClick={() => navigate('/app/offers')}>
+            Back to Offers
+          </Button>
+        </Card>
+      </Page>
+    );
+  }
+
   return (
     <OfferForm 
+      mode="edit"
+      offer={offer}
       onSaved={onSaved} 
       onNavigate={onNavigate} 
-      canSaveOffer={canCreateOffer}
+      canSaveOffer={canSaveOffer}
       isLimitReached={isLimitReached}
       offerLimitMessage={offerLimitMessage}
       subscription={subscription}

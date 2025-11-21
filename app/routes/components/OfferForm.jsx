@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   Page,
   Card,
@@ -19,57 +19,251 @@ import {
   Layout,
   Checkbox,
   Thumbnail,
+  Toast,
+  Frame,
 } from '@shopify/polaris';
 import { PlusIcon, QuestionCircleIcon, ImageIcon } from '@shopify/polaris-icons';
+import { useFetcher } from 'react-router';
+import { useAppBridge } from '@shopify/app-bridge-react';
 
-export function OfferForm({ offerId, onSave, onCancel }) {
-  const isEditing = !!offerId;
+export function OfferForm({ 
+  offerId, 
+  offer, 
+  mode = 'create',
+  onSaved, 
+  onNavigate, 
+  canSaveOffer = true,
+  isLimitReached = false,
+  offerLimitMessage = '',
+  subscription = null,
+  usage = null
+}) {
+  const isEditing = mode === 'edit' || !!offerId;
+  const fetcher = useFetcher();
+  const app = useAppBridge();
+
+  // Helper function to safely parse dates
+  const safeDateParse = (dateValue) => {
+    if (!dateValue) return '';
+    if (typeof dateValue !== 'string') return '';
+    try {
+      return dateValue.split('T')[0];
+    } catch (error) {
+      console.warn('Error parsing date:', dateValue, error);
+      return '';
+    }
+  };
 
   // Form state
-  const [formData, setFormData] = useState({
-    name: isEditing ? 'Summer Sale Bundle' : '',
-    description: isEditing ? 'Offering a bundle of premium products' : '',
-    status: 'active',
-    selectedProducts: isEditing
-      ? [
-          {
-            id: '123456789',
-            title: 'Premium Leather Wallet',
-            imageUrl: 'https://images.unsplash.com/photo-1627123424574-724758594e93?w=100&h=100&fit=crop',
-            price: '$49.99',
-            variants: 3,
-          },
-        ]
-      : [],
-    discountType: 'percentage',
-    discountValue: '10',
-    offerTitle: 'Special Offer Just For You!',
-    offerDescription: 'Get this amazing deal on your next purchase',
-    buttonText: 'Add to Order',
-    targetingRules: [],
-    limitPerCustomer: '1',
-    totalLimit: '',
-    expiryDate: '',
-    scheduleStart: '',
-    enableABTest: false,
+  const [formData, setFormData] = useState(() => {
+    if (isEditing && offer) {
+      // Normalize product data from database to match ResourcePicker format
+      const normalizedProducts = (offer.products || []).map(product => ({
+        ...product,
+        // Ensure all expected fields are available
+        id: product.shopify_product_id,
+        title: product.product_title,
+        variantId: product.shopify_variant_id,
+        variantTitle: product.variant_title,
+        price: product.variant_price || product.product_price,
+        displayTitle: product.variant_title 
+          ? `${product.product_title} - ${product.variant_title}`
+          : product.product_title,
+        imageUrl: product.image_url,
+        variantsCount: product.variants_count || 1,
+      }));
+
+      return {
+        name: offer.name || '',
+        description: offer.description || '',
+        status: offer.status || 'active',
+        selectedProducts: normalizedProducts,
+        discountType: offer.discount_type || 'percentage',
+        discountValue: offer.discount_value?.toString() || '10',
+        offerTitle: offer.offer_title || 'Special Offer Just For You!',
+        offerDescription: offer.offer_description || 'Get this amazing deal on your next purchase',
+        buttonText: offer.button_text || 'Add to Order',
+        targetingRules: [],
+        limitPerCustomer: offer.limit_per_customer?.toString() || '1',
+        totalLimit: offer.total_limit?.toString() || '',
+        expiryDate: safeDateParse(offer.expiry_date),
+        scheduleStart: safeDateParse(offer.schedule_start),
+        enableABTest: offer.enable_ab_test || false,
+      };
+    }
+    
+    return {
+      name: '',
+      description: '',
+      status: 'active',
+      selectedProducts: [],
+      discountType: 'percentage',
+      discountValue: '10',
+      offerTitle: 'Special Offer Just For You!',
+      offerDescription: 'Get this amazing deal on your next purchase',
+      buttonText: 'Add to Order',
+      targetingRules: [],
+      limitPerCustomer: '1',
+      totalLimit: '',
+      expiryDate: '',
+      scheduleStart: '',
+      enableABTest: false,
+    };
   });
 
-  const handleSelectProducts = useCallback(() => {
-    // This would open Shopify App Bridge's product picker
-    console.log('Opening product selector...');
-    // Simulate product selection for demo
-    const mockProduct = {
-      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      title: 'Luxury Watch Collection',
-      imageUrl: 'https://images.unsplash.com/photo-1523170335258-f5ed11844a49?w=100&h=100&fit=crop',
-      price: '$299.99',
-      variants: 5,
-    };
-    setFormData({ ...formData, selectedProducts: [...formData.selectedProducts, mockProduct] });
-  }, [formData]);
+  const [originalFormData, setOriginalFormData] = useState({});
+  const [hasChanges, setHasChanges] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+  const [toastError, setToastError] = useState(false);
 
-  const handleRemoveProduct = useCallback((productId) => {
-    setFormData({ ...formData, selectedProducts: formData.selectedProducts.filter(p => p.id !== productId) });
+  // Initialize original form data
+  useEffect(() => {
+    setOriginalFormData({ ...formData });
+  }, []);
+
+  // Check for changes
+  useEffect(() => {
+    const hasFormChanges = JSON.stringify(formData) !== JSON.stringify(originalFormData);
+    setHasChanges(hasFormChanges);
+  }, [formData, originalFormData]);
+
+  // Handle fetcher response
+  useEffect(() => {
+    if (fetcher.data) {
+      setIsLoading(false);
+      
+      if (fetcher.data.status === 200) {
+        // Show success toast
+        if (fetcher.data.showToast) {
+          setToastMessage(fetcher.data.toastMessage || 'Operation completed successfully!');
+          setToastError(false);
+          setShowToast(true);
+        }
+        
+        // Reset form state to disable buttons
+        if (!isEditing) {
+          // For create mode, reset hasChanges to disable save/cancel buttons
+          setHasChanges(false);
+          setOriginalFormData({ ...formData });
+        }
+        
+        // Call onSaved after a brief delay to let user see the toast
+        setTimeout(() => {
+          onSaved && onSaved();
+        }, 2000);
+      } else {
+        // Show error toast
+        setToastMessage(fetcher.data.message || 'An error occurred while saving');
+        setToastError(true);
+        setShowToast(true);
+        console.error("Error saving offer:", fetcher.data.message);
+      }
+    }
+  }, [fetcher.data, onSaved, formData, isEditing]);
+
+  const handleSelectProducts = useCallback(async () => {
+    if (!app) {
+      console.error('App Bridge not available');
+      return;
+    }
+
+    try {
+      const selected = await app.resourcePicker({
+        type: 'product',
+        multiple: true,
+      });
+      console.log("SW what is selected PRODUCT", selected);
+
+      if (selected && selected.length > 0) {
+        // Create entries for each variant of each selected product
+        const selectedProductVariants = [];
+        
+        selected.forEach(product => {
+          if (product.variants && product.variants.length > 0) {
+            // Create an entry for each variant
+            product.variants.forEach(variant => {
+              const productVariantEntry = {
+                // Product info
+                id: product.id,
+                title: product.title,
+                vendor: product.vendor || '',
+                
+                // Variant info
+                variantId: variant.id,
+                variantTitle: variant.title,
+                variantDisplayName: variant.displayName,
+                variantPrice: `$${variant.price}`,
+                
+                // Image (use product image)
+                imageUrl: product.images && product.images.length > 0 ? 
+                  product.images[0].originalSrc : null,
+                
+                // Combined display info
+                displayTitle: `${product.title} - ${variant.title}`,
+                price: `$${variant.price}`,
+                variantsCount: product.variants.length,
+              };
+              selectedProductVariants.push(productVariantEntry);
+            });
+          } else {
+            // Fallback: product without variants
+            const productEntry = {
+              id: product.id,
+              title: product.title,
+              variantId: null,
+              variantTitle: null,
+              variantDisplayName: null,
+              variantPrice: null,
+              imageUrl: product.images && product.images.length > 0 ? 
+                product.images[0].originalSrc : null,
+              displayTitle: product.title,
+              price: 'Price not available',
+              variantsCount: 0,
+              vendor: product.vendor || '',
+            };
+            selectedProductVariants.push(productEntry);
+          }
+        });
+
+        // Add selected product variants to form data, avoiding duplicates
+        const updatedProducts = [...formData.selectedProducts];
+        selectedProductVariants.forEach(newProductVariant => {
+          // Check for duplicates based on product ID + variant ID combination
+          const isDuplicate = updatedProducts.some(existingProduct => 
+            existingProduct.id === newProductVariant.id && 
+            existingProduct.variantId === newProductVariant.variantId
+          );
+          
+          if (!isDuplicate) {
+            updatedProducts.push(newProductVariant);
+          }
+        });
+
+        setFormData({ ...formData, selectedProducts: updatedProducts });
+      }
+
+    } catch (error) {
+      console.error('Error opening resource picker:', error);
+      // Handle cancellation or other errors gracefully
+      if (error.message !== 'User cancelled resource selection') {
+        setToastMessage('Unable to open product picker. Please try again.');
+        setToastError(true);
+        setShowToast(true);
+      }
+    }
+  }, [app, formData]);
+
+
+
+  const handleRemoveProduct = useCallback((productId, variantId = null) => {
+    setFormData({ 
+      ...formData, 
+      selectedProducts: formData.selectedProducts.filter(p => 
+        !(p.id === productId && p.variantId === variantId)
+      ) 
+    });
   }, [formData]);
 
   const handleAddTargetingRule = useCallback(() => {
@@ -91,26 +285,94 @@ export function OfferForm({ offerId, onSave, onCancel }) {
   }, [formData]);
 
   const handleSubmit = useCallback(() => {
-    // Here you would normally make an API call to save the offer
-    console.log('Saving offer...', formData);
-    onSave();
-  }, [formData, onSave]);
+    if (!hasChanges || !canSaveOffer) return;
+    
+    setIsLoading(true);
+    
+    // Prepare form data for submission
+    const submitData = new FormData();
+    submitData.append("intent", isEditing ? "update-offer" : "save-offer");
+    
+    Object.entries(formData).forEach(([key, value]) => {
+      if (key === 'selectedProducts') {
+        submitData.append("products", JSON.stringify(value));
+      } else if (typeof value === 'boolean') {
+        submitData.append(key, value.toString());
+      } else if (value !== null && value !== undefined) {
+        submitData.append(key, value);
+      }
+    });
+    
+    fetcher.submit(submitData, { method: "POST" });
+  }, [formData, hasChanges, fetcher]);
+
+  const handleCancel = useCallback(() => {
+    if (hasChanges) {
+      // Revert changes
+      setFormData({ ...originalFormData });
+      setHasChanges(false);
+    } else {
+      // Navigate back
+      onNavigate && onNavigate('offers');
+    }
+  }, [hasChanges, originalFormData, onNavigate]);
+
+  const handleToastDismiss = useCallback(() => {
+    setShowToast(false);
+  }, []);
+
+
 
   return (
+  <Frame>
     <Page
-      title={offerId ? 'Edit Offer' : 'Create New Offer'}
-      backAction={{ onAction: onCancel }}
+      title={isEditing ? 'Edit Offer' : 'Create New Offer'}
+      backAction={{ onAction: handleCancel }}
       primaryAction={{
         content: 'Save Offer',
         onAction: handleSubmit,
+        loading: isLoading,
+        disabled: !hasChanges || !canSaveOffer,
       }}
       secondaryActions={[
         {
-          content: 'Cancel',
-          onAction: onCancel,
+          content: hasChanges ? 'Cancel Changes' : 'Cancel',
+          onAction: handleCancel,
+          disabled: isLoading,
         },
       ]}
     >
+    {/* Offer Limit Banner - Show when limit is reached */}
+    {isLimitReached && (
+      <Layout.Section>
+        <Banner
+          title={isEditing ? "Plan Limit Reached" : "Offer Will Be Created as Paused"}
+          status="warning"
+          action={{
+            content: 'Upgrade Plan',
+            onAction: () => onNavigate('plans'),
+          }}
+        >
+          {!isEditing ? (
+            <>
+              <p>You've reached your plan limit for active offers. This offer will be created but set to <strong>paused</strong> status.</p>
+              <p>To activate this offer, please upgrade your plan or pause other active offers.</p>
+            </>
+          ) : (
+            <>
+              <p>You've reached your plan limit for active offers. Setting this offer to active will not work until you upgrade your plan.</p>
+              <p>The offer will be automatically set to paused if you try to activate it.</p>
+            </>
+          )}
+          {subscription && usage && (
+            <p style={{ marginTop: '8px' }}>
+              You're currently on the <strong>{subscription.plan_name}</strong> plan 
+              with {usage.active_offers_count} of {subscription.max_active_offers} offers used.
+            </p>
+          )}
+        </Banner>
+      </Layout.Section>
+    )}
       <Layout>
         {/* Left Column - Form */}
         <Layout.Section variant="oneThird">
@@ -181,29 +443,35 @@ export function OfferForm({ offerId, onSave, onCancel }) {
                 <FormLayout>
                   {formData.selectedProducts.length > 0 && (
                     <BlockStack gap="300">
-                      {formData.selectedProducts.map((product) => (
-                        <Card key={product.id}>
+                      {formData.selectedProducts.map((product, index) => (
+                        <Card key={`${product.id}-${product.variantId || 'default'}-${index}`}>
                           <div style={{ padding: '12px' }}>
                             <InlineStack gap="400" align="space-between" blockAlign="center">
                               <InlineStack gap="300" blockAlign="center">
                                 <Thumbnail
                                   source={product.imageUrl || ImageIcon}
-                                  alt={product.title}
+                                  alt={product.displayTitle || product.title}
                                   size="small"
                                 />
                                 <BlockStack gap="100">
                                   <Text as="p" variant="bodyMd" fontWeight="semibold">
-                                    {product.title}
+                                    {product.displayTitle || product.title}
                                   </Text>
                                   <Text as="p" variant="bodySm" tone="subdued">
-                                    {product.price} • {product.variants} variants
+                                    {product.price || product.variant_price || product.product_price || 'Price not available'}
+                                    {product.variantTitle && ` • Variant: ${product.variantTitle}`}
                                   </Text>
+                                  {product.vendor && (
+                                    <Text as="p" variant="bodySm" tone="subdued">
+                                      by {product.vendor}
+                                    </Text>
+                                  )}
                                 </BlockStack>
                               </InlineStack>
                               <Button
                                 variant="plain"
                                 tone="critical"
-                                onClick={() => handleRemoveProduct(product.id)}
+                                onClick={() => handleRemoveProduct(product.id, product.variantId)}
                               >
                                 Remove
                               </Button>
@@ -627,8 +895,8 @@ export function OfferForm({ offerId, onSave, onCancel }) {
                     {/* Product Display */}
                     {formData.selectedProducts.length > 0 ? (
                       <BlockStack gap="300">
-                        {formData.selectedProducts.map((product) => (
-                          <div key={product.id} style={{
+                        {formData.selectedProducts.map((product, index) => (
+                          <div key={`${product.id}-${product.variantId || 'default'}-${index}`} style={{
                             border: '1px solid #e1e3e5',
                             borderRadius: '12px',
                             padding: '12px',
@@ -646,7 +914,7 @@ export function OfferForm({ offerId, onSave, onCancel }) {
                                 }}>
                                   <img 
                                     src={product.imageUrl} 
-                                    alt={product.title}
+                                    alt={product.displayTitle || product.title}
                                     style={{
                                       width: '100%',
                                       height: '100%',
@@ -657,21 +925,33 @@ export function OfferForm({ offerId, onSave, onCancel }) {
                               )}
                               <BlockStack gap="100">
                                 <Text as="p" variant="bodyMd" fontWeight="semibold">
-                                  {product.title}
+                                  {product.displayTitle || product.title}
                                 </Text>
                                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                                   {formData.discountValue && (
                                     <Text as="span" variant="bodySm" tone="subdued">
-                                      <s>{product.price}</s>
+                                      <s>{product.price || product.variant_price || product.product_price || 'N/A'}</s>
                                     </Text>
                                   )}
                                   <Text as="span" variant="bodyMd" fontWeight="semibold">
-                                    {formData.discountType === 'percentage' && formData.discountValue
-                                      ? `$${(parseFloat(product.price.replace('$', '')) * (1 - parseFloat(formData.discountValue) / 100)).toFixed(2)}`
-                                      : formData.discountType === 'fixed' && formData.discountValue
-                                      ? `$${(parseFloat(product.price.replace('$', '')) - parseFloat(formData.discountValue)).toFixed(2)}`
-                                      : product.price
-                                    }
+                                    {(() => {
+                                      const price = product.price || product.variant_price || product.product_price;
+                                      if (!price || typeof price !== 'string') {
+                                        return price || 'Price not available';
+                                      }
+                                      
+                                      const numericPrice = parseFloat(price.replace('$', ''));
+                                      if (isNaN(numericPrice)) {
+                                        return price;
+                                      }
+                                      
+                                      if (formData.discountType === 'percentage' && formData.discountValue) {
+                                        return `$${(numericPrice * (1 - parseFloat(formData.discountValue) / 100)).toFixed(2)}`;
+                                      } else if (formData.discountType === 'fixed' && formData.discountValue) {
+                                        return `$${(numericPrice - parseFloat(formData.discountValue)).toFixed(2)}`;
+                                      }
+                                      return price;
+                                    })()}
                                   </Text>
                                   {formData.discountValue && (
                                     <Badge tone="success">
@@ -776,6 +1056,17 @@ export function OfferForm({ offerId, onSave, onCancel }) {
           </div>
         </Layout.Section>
       </Layout>
-    </Page>
+
+
+      </Page>
+      
+      {showToast && (
+        <Toast
+          content={toastMessage}
+          onDismiss={handleToastDismiss}
+          error={toastError}
+        />
+      )}
+    </Frame>
   );
 }

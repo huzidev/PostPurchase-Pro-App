@@ -2,16 +2,15 @@ generator client {
   provider = "prisma-client-js"
 }
 
+ datasource db {
+   provider = "postgresql"
+   url      = env("DATABASE_URL")
+ }
+
 // datasource db {
 //   provider = "sqlite"
-//   url      = "file:dev.sqlite"
+//   url      = "file:./dev.sqlite"
 // }
-
-datasource db {
-  provider = "postgresql"
-  url      = env("post_purchase_app_DATABASE_URL")
-}
-
 
 model Session {
   id            String    @id
@@ -32,39 +31,81 @@ model Session {
 }
 
 model Subscription {
-  id                      Int       @id @default(autoincrement())
-  shopify_url             String    @unique
+  id                      Int         @id @default(autoincrement())
+  shopify_url             String      @unique
   shopify_subscription_id String?
   charge_id               String?
-  plan_id                 String    @default("free")
-  plan_name               String    @default("Free")
-  plan_price              Float     @default(0)
-  max_active_offers       Int       @default(2)
-  max_impressions_monthly Int       @default(100)
-  is_active               Boolean   @default(false)
-  started_at              DateTime  @default(now())
+  plan_id                 String      @default("free")
+  plan_name               String      @default("Free")
+  plan_price              Float       @default(0)
+  max_active_offers       Int         @default(2)
+  max_impressions_monthly Int         @default(100)
+  is_active               Boolean     @default(false)
+  started_at              DateTime    @default(now())
   expires_at              DateTime?
-  createdAt               DateTime  @default(now())
-  updatedAt               DateTime  @updatedAt
-
-  // Relations
+  createdAt               DateTime    @default(now())
+  updatedAt               DateTime    @updatedAt
+  offers                  Offer[]
   analytics               Analytics[]
 }
 
-model Analytics {
-  id                String        @id @default(cuid())
+model Offer {
+  id                String    @id @default(cuid())
   shopify_url       String
-  offer_id          String?
-  date              DateTime      @default(now())
-  impressions       Int           @default(0)
-  views             Int           @default(0)
-  clicks            Int           @default(0)
-  conversions       Int           @default(0)
-  revenue           Float         @default(0)
-  conversion_rate   Float         @default(0)
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
+  name              String
+  description       String?
+  status            String    @default("active") // active, paused, draft
+  discount_type     String    // percentage, fixed
+  discount_value    Float
+  offer_title       String
+  offer_description String?
+  button_text       String    @default("Add to Order")
+  limit_per_customer Int      @default(1)
+  total_limit       Int?
+  expiry_date       DateTime?
+  schedule_start    DateTime?
+  enable_ab_test    Boolean   @default(false)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   // Relations
   subscription      Subscription  @relation(fields: [shopify_url], references: [shopify_url])
+  products          OfferProduct[]
+  analytics         Analytics[]
+}
+
+model OfferProduct {
+  id                 String   @id @default(cuid())
+  offer_id           String
+  shopify_product_id String
+  shopify_variant_id String?  // Optional - null means offer applies to all variants
+  product_title      String
+  variant_title      String?  // e.g., "Red / Large"
+  product_price      String
+  variant_price      String?  // Specific variant price if different
+  image_url          String?
+  variants_count     Int      @default(1)
+  createdAt          DateTime @default(now())
+
+  // Relations
+  offer              Offer    @relation(fields: [offer_id], references: [id], onDelete: Cascade)
+
+  @@unique([offer_id, shopify_product_id, shopify_variant_id])
+}
+
+model Analytics {
+  id              String       @id @default(cuid())
+  shopify_url     String
+  offer_id        String?
+  date            DateTime     @default(now())
+  impressions     Int          @default(0)
+  views           Int          @default(0)
+  clicks          Int          @default(0)
+  conversions     Int          @default(0)
+  revenue         Float        @default(0)
+  conversion_rate Float        @default(0)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  subscription    Subscription @relation(fields: [shopify_url], references: [shopify_url])
+  offer           Offer?       @relation(fields: [offer_id], references: [id], onDelete: Cascade)
 }

@@ -1,7 +1,7 @@
 import React from 'react';
 import { authenticate } from "../shopify.server";
 import { useNavigate } from 'react-router';
-import { Analytics } from './components/Analytics';
+import {Analytics} from './components/Analytics';
 
 export const loader = async ({ request }) => {
   await authenticate.admin(request);

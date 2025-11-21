@@ -168,6 +168,69 @@ export default class Subscription {
     }
   }
 
+  // Ensure subscription exists without overriding paid plans
+  async ensureSubscriptionExists() {
+    try {
+      const existingSubscription = await this.findExistingSubscription();
+      
+      // If subscription already exists, don't override it
+      if (existingSubscription) {
+        return {
+          status: 200,
+          message: "Subscription already exists",
+          subscription: existingSubscription,
+        };
+      }
+
+      // Only create free subscription if no subscription exists
+      return await this.createSubscription('free');
+    } catch (error) {
+      console.error("Error ensuring subscription exists:", error);
+      return {
+        status: 500,
+        message: "Failed to ensure subscription exists",
+        error: error.message,
+      };
+    }
+  }
+
+  // Sync database subscription with Shopify GraphQL subscription
+  async syncWithShopifySubscription(shopUrl, accessToken) {
+    try {
+      const activeSubscription = await this.getActiveSubscription(shopUrl, accessToken);
+      
+      if (activeSubscription.status === 200 && activeSubscription.subscriptions.length > 0) {
+        const shopifySubscription = activeSubscription.subscriptions[0];
+        
+        // Extract plan information from Shopify subscription
+        const planName = shopifySubscription.name;
+        let planId = 'free';
+        
+        // Map Shopify plan names to our plan IDs
+        if (planName.toLowerCase().includes('starter')) {
+          planId = 'starter';
+        } else if (planName.toLowerCase().includes('professional')) {
+          planId = 'professional';
+        } else if (planName.toLowerCase().includes('enterprise')) {
+          planId = 'enterprise';
+        }
+        
+        // Update database subscription to match Shopify
+        return await this.createSubscription(planId, shopifySubscription.id, null);
+      } else {
+        // No active Shopify subscription, ensure we have a free plan
+        return await this.ensureSubscriptionExists();
+      }
+    } catch (error) {
+      console.error("Error syncing with Shopify subscription:", error);
+      return {
+        status: 500,
+        message: "Failed to sync subscription",
+        error: error.message,
+      };
+    }
+  }
+
   // Update subscription status
   async updateSubscriptionStatus(isActive) {
     try {

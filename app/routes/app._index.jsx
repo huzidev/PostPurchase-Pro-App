@@ -3,15 +3,26 @@ import { useNavigate, useLoaderData } from 'react-router';
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import { Dashboard } from './components/Dashboard';
+import Subscription from "../models/subscription.server";
+import Offer from "../models/offer.server";
 
 export const loader = async ({ request }) => {
-  const { session } = await authenticate.admin(request);
+  const { session, admin } = await authenticate.admin(request);
   
-  // For now, return basic data - in a real app, you'd query the database for offers
-  // Since we removed the Offer model, we'll simulate this data
-  const hasOffers = false; // This would be checked from your offers storage/state
-  
-  return { hasOffers };
+  try {
+    // Ensure subscription exists for this shop
+    const subscriptionService = new Subscription(session.shop, admin.graphql);
+    await subscriptionService.ensureSubscriptionExists();
+    
+    // Check if shop has any offers
+    const offerService = new Offer(session.shop);
+    const hasOffers = await offerService.hasOffers();
+    
+    return { hasOffers };
+  } catch (error) {
+    console.error("Error in dashboard loader:", error);
+    return { hasOffers: false };
+  }
 };
 
 export default function Index() {
