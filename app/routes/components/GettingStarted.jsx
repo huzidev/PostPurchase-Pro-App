@@ -1,23 +1,26 @@
 import React from 'react';
-import { Card, BlockStack, InlineStack, Text, Button, Icon } from '@shopify/polaris';
+import { Card, BlockStack, InlineStack, Text, Button, Icon, ProgressBar } from '@shopify/polaris';
 import { CheckCircleIcon } from '@shopify/polaris-icons';
 
-export function GettingStarted({ onNavigate }) {
-  // In a real app, these would be based on actual user progress
+export function GettingStarted({ onNavigate, subscription, hasOffers = false }) {
+  // Check if user has selected a plan (not on free or has active subscription)
+  const hasPlan = subscription && (subscription.plan_id !== 'free' || subscription.is_active);
+  const planName = subscription?.plan_name || 'Free';
+  
   const steps = [
     {
-      title: 'Choose your plan',
+      title: hasPlan ? `Current Plan (${planName})` : 'Choose your plan',
       description: 'Select a plan that fits your business needs',
-      completed: false,
+      completed: hasPlan,
       action: () => onNavigate('plans'),
-      actionLabel: 'View Plans',
+      actionLabel: hasPlan ? 'View Plans' : 'View Plans',
     },
     {
-      title: 'Create your first offer',
+      title: hasOffers ? 'View your offers' : 'Create your first offer',
       description: 'Set up a post-purchase offer to boost your revenue',
-      completed: false,
-      action: () => onNavigate('create-offer'),
-      actionLabel: 'Create Offer',
+      completed: hasOffers,
+      action: () => onNavigate(hasOffers ? 'offers' : 'create-offer'),
+      actionLabel: hasOffers ? 'View Offers' : 'Create Offer',
     },
     {
       title: 'Configure targeting rules',
@@ -36,7 +39,8 @@ export function GettingStarted({ onNavigate }) {
   ];
 
   const completedSteps = steps.filter((step) => step.completed).length;
-  const progress = (completedSteps / steps.length) * 100;
+  const percentage = (completedSteps / steps.length) * 100;
+  const isNearLimit = percentage >= 75;
 
   return (
     <Card>
@@ -50,16 +54,11 @@ export function GettingStarted({ onNavigate }) {
           </Text>
         </BlockStack>
 
-        <div style={{ height: '8px', backgroundColor: '#e4e5e7', borderRadius: '4px', overflow: 'hidden' }}>
-          <div
-            style={{
-              height: '100%',
-              width: `${progress}%`,
-              backgroundColor: '#008060',
-              transition: 'width 0.3s ease',
-            }}
-          />
-        </div>
+        <ProgressBar
+          progress={percentage}
+          tone={isNearLimit ? "critical" : "primary"}
+          size="small"
+        />
 
         <Text as="p" variant="bodySm" tone="subdued">
           {completedSteps} of {steps.length} steps completed

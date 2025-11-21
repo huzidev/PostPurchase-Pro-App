@@ -1,16 +1,22 @@
 import React from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useLoaderData } from 'react-router';
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import { Dashboard } from './components/Dashboard';
 
 export const loader = async ({ request }) => {
-  await authenticate.admin(request);
-  return null;
+  const { session } = await authenticate.admin(request);
+  
+  // For now, return basic data - in a real app, you'd query the database for offers
+  // Since we removed the Offer model, we'll simulate this data
+  const hasOffers = false; // This would be checked from your offers storage/state
+  
+  return { hasOffers };
 };
 
 export default function Index() {
   const navigate = useNavigate();
+  const { hasOffers } = useLoaderData();
 
   const onNavigate = (page) => {
     switch (page) {
@@ -29,7 +35,7 @@ export default function Index() {
     }
   };
 
-  return <Dashboard onNavigate={onNavigate} />;
+  return <Dashboard onNavigate={onNavigate} hasOffers={hasOffers} />;
 }
 
 export const headers = (headersArgs) => {

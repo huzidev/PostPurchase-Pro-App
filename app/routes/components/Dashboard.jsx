@@ -16,13 +16,16 @@ import {
 } from '@shopify/polaris';
 import { QuestionCircleIcon } from '@shopify/polaris-icons';
 import { GettingStarted } from './GettingStarted';
+import { useSubscription } from '../../hooks/useSubscription';
 
-export function Dashboard({ onNavigate }) {
+export function Dashboard({ onNavigate, hasOffers = false }) {
+  const { subscription } = useSubscription();
+  
   const stats = [
-    { label: 'Total Offers', value: '12', change: '+3 this month' },
-    { label: 'Active Offers', value: '8', change: '4 paused' },
-    { label: 'Total Revenue', value: '$24,567', change: '+12.5% vs last month' },
-    { label: 'Conversion Rate', value: '23.4%', change: '+2.1% vs last month' },
+    { label: 'Total Offers', value: hasOffers ? '3' : '0', change: hasOffers ? '+3 this month' : 'No offers yet' },
+    { label: 'Active Offers', value: hasOffers ? '2' : '0', change: hasOffers ? '1 paused' : 'Create your first offer' },
+    { label: 'Total Revenue', value: hasOffers ? '$24,567' : '$0', change: hasOffers ? '+12.5% vs last month' : 'Start earning revenue' },
+    { label: 'Conversion Rate', value: hasOffers ? '23.4%' : '0%', change: hasOffers ? '+2.1% vs last month' : 'Track performance' },
   ];
 
   const recentOffers = [
@@ -42,7 +45,11 @@ export function Dashboard({ onNavigate }) {
     >
       <BlockStack gap="500">
         {/* Getting Started Section */}
-        <GettingStarted onNavigate={onNavigate} />
+        <GettingStarted 
+          onNavigate={onNavigate} 
+          subscription={subscription}
+          hasOffers={hasOffers}
+        />
 
         {/* Stats Overview */}
         <Layout>

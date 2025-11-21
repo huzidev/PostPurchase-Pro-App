@@ -17,8 +17,11 @@ export default function App() {
     <ShopifyAppProvider embedded apiKey={apiKey}>
       <PolarisAppProvider i18n={{}}>
         <s-app-nav>
-          <s-link href="/app">Home</s-link>
-          <s-link href="/app/additional">Additional page</s-link>
+          <s-link href="/app">Dashboard</s-link>
+          <s-link href="/app/analytics">Analytics</s-link>
+          <s-link href="/app/create-offer">Create Offer</s-link>
+          <s-link href="/app/offers">Offers</s-link>
+          <s-link href="/app/plans">Plans</s-link>
         </s-app-nav>
         <Outlet />
       </PolarisAppProvider>
