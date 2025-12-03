@@ -18,16 +18,47 @@ export const loader = async ({ request }) => {
     const offerService = new Offer(session.shop);
     const hasOffers = await offerService.hasOffers();
     
-    return { hasOffers };
+    // Fetch current subscription for immediate use
+    const activeShopifySubscription = await subscriptionService.getActiveSubscription(
+      session.shop, 
+      session.accessToken
+    );
+    
+    const currentSubscription = await subscriptionService.getCurrentSubscription();
+    
+    let subscription = null;
+    
+    // Prioritize Shopify GraphQL subscription over database
+    if (activeShopifySubscription.subscriptions && activeShopifySubscription.subscriptions.length > 0) {
+      const shopifySubscription = activeShopifySubscription.subscriptions[0];
+      const { getAllPlans } = await import("../utils/plans");
+      const plans = getAllPlans();
+      const matchingPlan = plans.find(plan => shopifySubscription.name.includes(plan.name)) || plans.find(plan => plan.id === "starter");
+      
+      subscription = {
+        status: shopifySubscription.status,
+        plan_id: matchingPlan ? matchingPlan.id : "starter",
+        plan_name: shopifySubscription.name,
+        name: shopifySubscription.name,
+        max_active_offers: matchingPlan ? matchingPlan.maxOffers : 5,
+        max_impressions_monthly: matchingPlan ? matchingPlan.maxImpressions : 1000,
+        is_active: shopifySubscription.status === 'ACTIVE',
+        expires_at: null,
+      };
+    } else if (currentSubscription.subscription && currentSubscription.subscription.is_active) {
+      subscription = currentSubscription.subscription;
+    }
+    
+    return { hasOffers, subscription };
   } catch (error) {
     console.error("Error in dashboard loader:", error);
-    return { hasOffers: false };
+    return { hasOffers: false, subscription: null };
   }
 };
 
 export default function Index() {
   const navigate = useNavigate();
-  const { hasOffers } = useLoaderData();
+  const { hasOffers, subscription: loaderSubscription } = useLoaderData();
 
   const onNavigate = (page) => {
     switch (page) {
@@ -46,7 +77,7 @@ export default function Index() {
     }
   };
 
-  return <Dashboard onNavigate={onNavigate} hasOffers={hasOffers} />;
+  return <Dashboard onNavigate={onNavigate} hasOffers={hasOffers} initialSubscription={loaderSubscription} />;
 }
 
 export const headers = (headersArgs) => {

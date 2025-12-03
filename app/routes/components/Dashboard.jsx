@@ -16,10 +16,13 @@ import {
 } from '@shopify/polaris';
 import { QuestionCircleIcon } from '@shopify/polaris-icons';
 import { GettingStarted } from './GettingStarted';
-import { useSubscription } from '../../hooks/useSubscription';
+import { useSubscription } from '../../hooks/useSubscription.jsx';
 
-export function Dashboard({ onNavigate, hasOffers = false }) {
-  const { subscription } = useSubscription();
+export function Dashboard({ onNavigate, hasOffers = false, initialSubscription = null }) {
+  const { subscription: hookSubscription } = useSubscription();
+  
+  // Use loader subscription if available, fallback to hook subscription
+  const subscription = initialSubscription || hookSubscription;
   
   const stats = [
     { label: 'Total Offers', value: hasOffers ? '3' : '0', change: hasOffers ? '+3 this month' : 'No offers yet' },

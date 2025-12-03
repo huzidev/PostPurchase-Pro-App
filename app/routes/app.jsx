@@ -3,6 +3,7 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { AppProvider as ShopifyAppProvider } from "@shopify/shopify-app-react-router/react";
 import { AppProvider as PolarisAppProvider } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
+import { SubscriptionProvider, useRouteSubscriptionCheck } from "../hooks/useSubscription.jsx";
 
 export const loader = async ({ request }) => {
   await authenticate.admin(request);
@@ -12,17 +13,24 @@ export const loader = async ({ request }) => {
 
 export default function App() {
   const { apiKey } = useLoaderData();
+  function RouteSubscriptionRunner() {
+    useRouteSubscriptionCheck();
+    return null;
+  }
 
   return (
     <ShopifyAppProvider embedded apiKey={apiKey}>
       <PolarisAppProvider i18n={{}}>
-        <s-app-nav>
+        <SubscriptionProvider>
+          <RouteSubscriptionRunner />
+          <s-app-nav>
           <s-link href="/app">Dashboard</s-link>
           <s-link href="/app/analytics">Analytics</s-link>
           <s-link href="/app/offers">Offers</s-link>
           <s-link href="/app/plans">Plans</s-link>
         </s-app-nav>
-        <Outlet />
+          <Outlet />
+        </SubscriptionProvider>
       </PolarisAppProvider>
     </ShopifyAppProvider>
   );

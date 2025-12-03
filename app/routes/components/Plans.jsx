@@ -14,15 +14,22 @@ import {
 } from '@shopify/polaris';
 import { getAllPlans } from '../../utils/plans';
 import { PlanCard } from './PlanCard';
-import { useSubscription } from '../../hooks/useSubscription';
+import { useSubscription } from '../../hooks/useSubscription.jsx';
 import { useFetcher, useLoaderData, useSearchParams } from 'react-router';
 
-export function Plans({ onNavigate }) {
-  const { subscription, loading, error, refreshSubscription } = useSubscription();
+export function Plans({ onNavigate, initialSubscription = null }) {
+  const { subscription: hookSubscription, loading, error, refreshSubscription } = useSubscription();
+  
+  // Use loader subscription if available, fallback to hook subscription
+  const subscription = initialSubscription || hookSubscription;
+  
+  // Only show loading if we don't have initial subscription and hook is loading
+  const shouldShowLoading = !initialSubscription && loading && !hookSubscription;
   const [toastActive, setToastActive] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [loadingPlanId, setLoadingPlanId] = useState(null);
   const [showDowngradeModal, setShowDowngradeModal] = useState(false);
+  const [modalLoading, setModalLoading] = useState(false);
   const [targetPlan, setTargetPlan] = useState(null);
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -91,16 +98,12 @@ export function Plans({ onNavigate }) {
 
   const handleDowngradeConfirm = () => {
     if (targetPlan) {
-      setShowDowngradeModal(false);
-      setLoadingPlanId(targetPlan.id);
-      showToast('Processing downgrade...');
+      setModalLoading(true);
       
       fetcher.submit(
         { intent: 'subscribe', planId: targetPlan.id },
         { method: 'POST', action: '/app/plans' }
       );
-      
-      setTargetPlan(null);
     }
   };
 
@@ -112,9 +115,8 @@ export function Plans({ onNavigate }) {
   // Handle fetcher response
   useEffect(() => {
     if (fetcher.data) {
-      setLoadingPlanId(null); // Clear loading state
-      
       if (fetcher.data.confirmationUrl) {
+        // Don't clear loading state - keep button loading until redirect
         // Use parent window location for Shopify embedded app
         if (window.parent) {
           window.parent.location.href = fetcher.data.confirmationUrl;
@@ -122,13 +124,47 @@ export function Plans({ onNavigate }) {
           window.top.location.href = fetcher.data.confirmationUrl;
         }
       } else if (fetcher.data.success) {
-        showToast(fetcher.data.message || 'Subscription updated successfully');
-        refreshSubscription();
+        // Free plan completed (no redirect) — update UI and refresh subscription context
+        if (fetcher.data.type === "free") {
+          setModalLoading(false);
+          setShowDowngradeModal(false);
+          setTargetPlan(null);
+          setLoadingPlanId(null);
+          
+          // Update subscription data if provided
+          if (fetcher.data.subscription) {
+            // Could store this in a state if needed for immediate UI updates
+            console.log("Free plan subscription data:", fetcher.data.subscription);
+          }
+          
+          // Refresh subscription context so UI updates immediately
+          if (typeof refreshSubscription === 'function') {
+            refreshSubscription();
+          }
+          
+          // Hide any currently visible banner and remove query params from URL
+          setBannerDismissed(true);
+          try {
+            window.history.replaceState({}, '', '/app/plans');
+          } catch (err) {
+            console.error('Failed to replace state in history after free downgrade', err);
+          }
+          
+          showToast(fetcher.data.message || 'Successfully downgraded to free plan');
+        } else {
+          // Other successful actions
+          setLoadingPlanId(null);
+          showToast(fetcher.data.message || 'Subscription updated successfully');
+          refreshSubscription();
+        }
       } else {
+        // Clear loading state only on errors
+        setModalLoading(false);
+        setLoadingPlanId(null);
         showToast(fetcher.data.message || 'Failed to update subscription');
       }
     }
-  }, [fetcher.data]);
+  }, [fetcher.data, targetPlan, refreshSubscription]);
 
   const toastMarkup = toastActive && (
     <Toast
@@ -152,7 +188,12 @@ export function Plans({ onNavigate }) {
                 tone="success"
                 onDismiss={() => {
                   setBannerDismissed(true);
-                  setSearchParams({});
+                  try {
+                    window.history.replaceState({}, '', '/app/plans');
+                  } catch (err) {
+                    console.error('Failed to replace state in history', err);
+                    setSearchParams({});
+                  }
                 }}
               >
                 <p>Your {urlPlanName} subscription has been successfully activated and is now ready to use!</p>
@@ -161,17 +202,22 @@ export function Plans({ onNavigate }) {
           )}
 
           {/* Deactivation Banner */}
-          {urlStatus === 'deactivated' && !bannerDismissed && (
+          {(urlStatus === 'deactivated' || (fetcher.data?.status === 'deactivated' && fetcher.data?.type === 'free')) && !bannerDismissed && (
             <Layout.Section>
               <Banner
                 title="Subscription Deactivated"
                 tone="info"
                 onDismiss={() => {
                   setBannerDismissed(true);
-                  setSearchParams({});
+                  try {
+                    window.history.replaceState({}, '', '/app/plans');
+                  } catch (err) {
+                    console.error('Failed to replace state in history', err);
+                    setSearchParams({});
+                  }
                 }}
               >
-                <p>{urlMessage || "Your subscription has been successfully deactivated"}</p>
+                <p>{urlMessage || fetcher.data?.message || "Your subscription has been successfully deactivated"}</p>
               </Banner>
             </Layout.Section>
           )}
@@ -183,21 +229,6 @@ export function Plans({ onNavigate }) {
               </Banner>
             </Layout.Section>
           )}
-
-          <Layout.Section>
-            <Banner tone="info">
-              <p>
-                {loading ? (
-                  "Loading subscription data..."
-                ) : (
-                  <>
-                    You're currently on the <strong>{plans.find(p => p.id === currentPlan)?.name}</strong> plan.
-                    {subscription?.is_active ? ' Your subscription is active.' : ' Upgrade anytime to unlock more features and scale your post-purchase offers.'}
-                  </>
-                )}
-              </p>
-            </Banner>
-          </Layout.Section>
 
           <Layout.Section>
             <InlineGrid columns={{ xs: 1, sm: 2, lg: 4 }} gap="400">
@@ -256,17 +287,20 @@ export function Plans({ onNavigate }) {
       {/* Downgrade Confirmation Modal */}
       <Modal
         open={showDowngradeModal}
-        onClose={handleDowngradeCancel}
+        onClose={modalLoading ? undefined : handleDowngradeCancel}
         title="Confirm Downgrade to Free Plan"
         primaryAction={{
-          content: 'Yes, Downgrade',
+          content: modalLoading ? 'Processing...' : 'Yes, Downgrade',
           onAction: handleDowngradeConfirm,
           destructive: true,
+          loading: modalLoading,
+          disabled: modalLoading,
         }}
         secondaryActions={[
           {
             content: 'Cancel',
             onAction: handleDowngradeCancel,
+            disabled: modalLoading,
           },
         ]}
       >

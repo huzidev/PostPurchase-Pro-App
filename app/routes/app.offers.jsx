@@ -43,7 +43,7 @@ export const loader = async ({ request }) => {
 };
 
 export const action = async ({ request }) => {
-  const { session } = await authenticate.admin(request);
+  const { session, admin } = await authenticate.admin(request);
   const formData = await request.formData();
   const intent = formData.get("intent");
   
@@ -62,7 +62,7 @@ export const action = async ({ request }) => {
       
       // Check limits when trying to activate an offer
       if (status === 'active') {
-        const subscriptionService = new Subscription(session.shop, null);
+        const subscriptionService = new Subscription(session.shop, admin.graphql);
         const canCreateResult = await subscriptionService.canPerformAction('create_offer');
         
         if (!canCreateResult.allowed) {

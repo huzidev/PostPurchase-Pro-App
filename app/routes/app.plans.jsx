@@ -1,13 +1,13 @@
 import React, { useEffect } from 'react';
 import { authenticate } from "../shopify.server";
-import { useNavigate, useSearchParams } from 'react-router';
+import { useNavigate, useSearchParams, useLoaderData } from 'react-router';
 import { Plans } from './components/Plans';
 import Subscription from "../models/subscription.server";
 
 import { getAllPlans } from "../utils/plans";
 
 export const loader = async ({ request }) => {
-  const { session } = await authenticate.admin(request);
+  const { session, admin } = await authenticate.admin(request);
   const url = new URL(request.url);
   
   // Check if this is a subscription success callback
@@ -15,8 +15,10 @@ export const loader = async ({ request }) => {
   const planName = url.searchParams.get('planName');
   const price = url.searchParams.get('price');
   
+  let subscription = null;
+  
   try {
-    const subscriptionService = new Subscription(session.shop, null);
+    const subscriptionService = new Subscription(session.shop, admin.graphql);
     
     if (plan && planName && price) {
       // Handle subscription success callback
@@ -32,11 +34,39 @@ export const loader = async ({ request }) => {
       // Sync database with Shopify subscription on every load to prevent discrepancies
       await subscriptionService.syncWithShopifySubscription(session.shop, session.accessToken);
     }
+    
+    // Always fetch current subscription for immediate use
+    const activeShopifySubscription = await subscriptionService.getActiveSubscription(
+      session.shop, 
+      session.accessToken
+    );
+    
+    const currentSubscription = await subscriptionService.getCurrentSubscription();
+    
+    // Prioritize Shopify GraphQL subscription over database
+    if (activeShopifySubscription.subscriptions && activeShopifySubscription.subscriptions.length > 0) {
+      const shopifySubscription = activeShopifySubscription.subscriptions[0];
+      const plans = getAllPlans();
+      const matchingPlan = plans.find(plan => shopifySubscription.name.includes(plan.name)) || plans.find(plan => plan.id === "starter");
+      
+      subscription = {
+        status: shopifySubscription.status,
+        plan_id: matchingPlan ? matchingPlan.id : "starter",
+        plan_name: shopifySubscription.name,
+        name: shopifySubscription.name,
+        max_active_offers: matchingPlan ? matchingPlan.maxOffers : 5,
+        max_impressions_monthly: matchingPlan ? matchingPlan.maxImpressions : 1000,
+        is_active: shopifySubscription.status === 'ACTIVE',
+        expires_at: null,
+      };
+    } else if (currentSubscription.subscription && currentSubscription.subscription.is_active) {
+      subscription = currentSubscription.subscription;
+    }
   } catch (error) {
     console.error("Error handling subscription:", error);
   }
   
-  return { plan, planName, price };
+  return { plan, planName, price, subscription };
 };
 
 export async function action({ request }) {
@@ -90,17 +120,13 @@ export async function action({ request }) {
 
         console.log("Successfully created free plan subscription in database");
 
-        // Redirect with query params for consistent UI update like paid plans
-        const url = new URL(request.url);
-        url.searchParams.set('status', 'deactivated');
-        url.searchParams.set('message', 'Your subscription has been successfully deactivated');
-        
-        throw new Response(null, {
-          status: 302,
-          headers: {
-            Location: url.toString(),
-          },
-        });
+        return {
+          success: true,
+          status: "deactivated",
+          type: "free",
+          message: "Your subscription has been successfully deactivated",
+          subscription: dbResult.subscription,
+        };
 
       } catch (error) {
         // Re-throw redirect responses (they're not actual errors)
@@ -108,10 +134,10 @@ export async function action({ request }) {
           throw error;
         }
         console.error("Error handling free plan subscription:", error);
-        return Response.json({
+        return {
           success: false,
           message: "Failed to process free plan subscription",
-        });
+        };
       }
     }
 
@@ -227,6 +253,7 @@ export async function action({ request }) {
 export default function PlansRoute() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const { subscription: loaderSubscription } = useLoaderData();
 
   // Clear query params after handling subscription success
   useEffect(() => {
@@ -256,5 +283,5 @@ export default function PlansRoute() {
     }
   };
 
-  return <Plans onNavigate={onNavigate} />;
+  return <Plans onNavigate={onNavigate} initialSubscription={loaderSubscription} />;
 }

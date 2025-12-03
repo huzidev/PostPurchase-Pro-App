@@ -65,7 +65,7 @@ export const loader = async ({ request, params }) => {
 };
 
 export const action = async ({ request, params }) => {
-  const { session } = await authenticate.admin(request);
+  const { session, admin } = await authenticate.admin(request);
   const formData = await request.formData();
   const intent = formData.get("intent");
   const offerId = params.id;
@@ -82,7 +82,7 @@ export const action = async ({ request, params }) => {
   if (intent === "update-offer") {
     try {
       // Check if user can activate offers when trying to set status to active
-      const subscriptionService = new Subscription(session.shop, null);
+      const subscriptionService = new Subscription(session.shop, admin.graphql);
       const canCreateResult = await subscriptionService.canPerformAction('create_offer');
       
       const offerService = new Offer(session.shop);
