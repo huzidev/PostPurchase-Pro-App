@@ -2,15 +2,10 @@ generator client {
   provider = "prisma-client-js"
 }
 
- datasource db {
-   provider = "postgresql"
-   url      = env("post_purchase_app_DATABASE_URL")
- }
-
-// datasource db {
-//   provider = "sqlite"
-//   url      = "file:./dev.sqlite"
-// }
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
 
 model Session {
   id            String    @id
@@ -45,49 +40,45 @@ model Subscription {
   expires_at              DateTime?
   createdAt               DateTime    @default(now())
   updatedAt               DateTime    @updatedAt
-  offers                  Offer[]
   analytics               Analytics[]
+  offers                  Offer[]
 }
 
 model Offer {
-  id                String    @id @default(cuid())
-  shopify_url       String
-  name              String
-  description       String?
-  status            String    @default("active") // active, paused, draft
-  discount_type     String    // percentage, fixed
-  discount_value    Float
-  offer_title       String
-  offer_description String?
-  button_text       String    @default("Add to Order")
-  limit_per_customer Int      @default(1)
-  total_limit       Int?
-  expiry_date       DateTime?
-  schedule_start    DateTime?
-  enable_ab_test    Boolean   @default(false)
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-
-  // Relations
-  subscription      Subscription  @relation(fields: [shopify_url], references: [shopify_url])
-  products          OfferProduct[]
-  analytics         Analytics[]
+  id                 String         @id @default(cuid())
+  shopify_url        String
+  name               String
+  description        String?
+  status             String         @default("active")
+  discount_type      String
+  discount_value     Float
+  offer_title        String
+  offer_description  String?
+  button_text        String         @default("Add to Order")
+  limit_per_customer Int            @default(1)
+  total_limit        Int?
+  expiry_date        DateTime?
+  schedule_start     DateTime?
+  enable_ab_test     Boolean        @default(false)
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  analytics          Analytics[]
+  subscription       Subscription   @relation(fields: [shopify_url], references: [shopify_url])
+  products           OfferProduct[]
 }
 
 model OfferProduct {
   id                 String   @id @default(cuid())
   offer_id           String
   shopify_product_id String
-  shopify_variant_id String?  // Optional - null means offer applies to all variants
+  shopify_variant_id String?
   product_title      String
-  variant_title      String?  // e.g., "Red / Large"
+  variant_title      String?
   product_price      String
-  variant_price      String?  // Specific variant price if different
+  variant_price      String?
   image_url          String?
   variants_count     Int      @default(1)
   createdAt          DateTime @default(now())
-
-  // Relations
   offer              Offer    @relation(fields: [offer_id], references: [id], onDelete: Cascade)
 
   @@unique([offer_id, shopify_product_id, shopify_variant_id])
@@ -106,6 +97,6 @@ model Analytics {
   conversion_rate Float        @default(0)
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
-  subscription    Subscription @relation(fields: [shopify_url], references: [shopify_url])
   offer           Offer?       @relation(fields: [offer_id], references: [id], onDelete: Cascade)
+  subscription    Subscription @relation(fields: [shopify_url], references: [shopify_url])
 }

@@ -255,8 +255,6 @@ export function OfferForm({
     }
   }, [app, formData]);
 
-
-
   const handleRemoveProduct = useCallback((productId, variantId = null) => {
     setFormData({ 
       ...formData, 
@@ -425,7 +423,6 @@ export function OfferForm({
               </BlockStack>
             </Card>
 
-            {/* Offer Details Section */}
             <Card>
               <BlockStack gap="400">
                 <InlineStack align="space-between" blockAlign="center">
@@ -437,7 +434,7 @@ export function OfferForm({
                   </Tooltip>
                 </InlineStack>
                 <Text as="p" variant="bodyMd" tone="subdued">
-                  Choose the product you want to offer and set the discount amount
+                  Choose the products you want to offer to customers
                 </Text>
                 <Divider />
                 <FormLayout>

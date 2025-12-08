@@ -40,6 +40,46 @@ CREATE TABLE "Subscription" (
 );
 
 -- CreateTable
+CREATE TABLE "Offer" (
+    "id" TEXT NOT NULL,
+    "shopify_url" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "description" TEXT,
+    "status" TEXT NOT NULL DEFAULT 'active',
+    "discount_type" TEXT NOT NULL,
+    "discount_value" DOUBLE PRECISION NOT NULL,
+    "offer_title" TEXT NOT NULL,
+    "offer_description" TEXT,
+    "button_text" TEXT NOT NULL DEFAULT 'Add to Order',
+    "limit_per_customer" INTEGER NOT NULL DEFAULT 1,
+    "total_limit" INTEGER,
+    "expiry_date" TIMESTAMP(3),
+    "schedule_start" TIMESTAMP(3),
+    "enable_ab_test" BOOLEAN NOT NULL DEFAULT false,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "Offer_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "OfferProduct" (
+    "id" TEXT NOT NULL,
+    "offer_id" TEXT NOT NULL,
+    "shopify_product_id" TEXT NOT NULL,
+    "shopify_variant_id" TEXT,
+    "product_title" TEXT NOT NULL,
+    "variant_title" TEXT,
+    "product_price" TEXT NOT NULL,
+    "variant_price" TEXT,
+    "image_url" TEXT,
+    "variants_count" INTEGER NOT NULL DEFAULT 1,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "OfferProduct_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "Analytics" (
     "id" TEXT NOT NULL,
     "shopify_url" TEXT NOT NULL,
@@ -60,5 +100,17 @@ CREATE TABLE "Analytics" (
 -- CreateIndex
 CREATE UNIQUE INDEX "Subscription_shopify_url_key" ON "Subscription"("shopify_url");
 
+-- CreateIndex
+CREATE UNIQUE INDEX "OfferProduct_offer_id_shopify_product_id_shopify_variant_id_key" ON "OfferProduct"("offer_id", "shopify_product_id", "shopify_variant_id");
+
+-- AddForeignKey
+ALTER TABLE "Offer" ADD CONSTRAINT "Offer_shopify_url_fkey" FOREIGN KEY ("shopify_url") REFERENCES "Subscription"("shopify_url") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "OfferProduct" ADD CONSTRAINT "OfferProduct_offer_id_fkey" FOREIGN KEY ("offer_id") REFERENCES "Offer"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
 -- AddForeignKey
 ALTER TABLE "Analytics" ADD CONSTRAINT "Analytics_shopify_url_fkey" FOREIGN KEY ("shopify_url") REFERENCES "Subscription"("shopify_url") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Analytics" ADD CONSTRAINT "Analytics_offer_id_fkey" FOREIGN KEY ("offer_id") REFERENCES "Offer"("id") ON DELETE CASCADE ON UPDATE CASCADE;

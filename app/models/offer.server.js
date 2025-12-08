@@ -27,10 +27,13 @@ export default class Offer {
           schedule_start: offerInfo.scheduleStart ? new Date(offerInfo.scheduleStart) : null,
           enable_ab_test: offerInfo.enableABTest || false,
           products: {
-            create: products.map(product => ({
+            create: (products || []).map(product => ({
               shopify_product_id: product.id,
+              shopify_variant_id: product.variantId || null,
               product_title: product.title,
-              product_price: product.price,
+              variant_title: product.variantTitle || null,
+              product_price: product.price || '0',
+              variant_price: product.variantPrice || null,
               image_url: product.imageUrl,
               variants_count: product.variantsCount || 1,
             })),
@@ -155,10 +158,13 @@ export default class Offer {
           schedule_start: offerInfo.scheduleStart ? new Date(offerInfo.scheduleStart) : null,
           enable_ab_test: offerInfo.enableABTest || false,
           products: {
-            create: products.map(product => ({
+            create: (products || []).map(product => ({
               shopify_product_id: product.id,
+              shopify_variant_id: product.variantId || null,
               product_title: product.title,
-              product_price: product.price,
+              variant_title: product.variantTitle || null,
+              product_price: product.price || '0',
+              variant_price: product.variantPrice || null,
               image_url: product.imageUrl,
               variants_count: product.variantsCount || 1,
             })),
@@ -268,4 +274,100 @@ export default class Offer {
       };
     }
   }
+
+  // Get offers by purchased product ID (for post-purchase extension)
+  async getOffersByProduct(productId, variantId = null) {
+    try {
+      const offers = await db.offer.findMany({
+        where: {
+          shopify_url: this.shopify_url,
+          status: 'active', // Only return active offers
+          AND: [
+            {
+              OR: [
+                { expiry_date: null }, // No expiry date
+                { expiry_date: { gte: new Date() } } // Not expired
+              ]
+            },
+            {
+              OR: [
+                { schedule_start: null }, // No schedule
+                { schedule_start: { lte: new Date() } } // Already started
+              ]
+            }
+          ],
+          products: {
+            some: {
+              shopify_product_id: productId,
+              ...(variantId && { shopify_variant_id: variantId })
+            }
+          }
+        },
+        include: {
+          products: true,
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
+
+      return {
+        status: 200,
+        message: "Offers fetched successfully",
+        offers,
+      };
+    } catch (error) {
+      console.error("Error fetching offers by trigger product:", error);
+      return {
+        status: 500,
+        message: "Failed to fetch offers",
+        error: error.message,
+      };
+    }
+  }
+}
+
+
+// Post Purchase Extension Code
+const OFFERS = [
+  {
+    id: 1,
+    title: "One time offer",
+    productTitle: "The S-Series Snowboard",
+    productImageURL:
+      "https://cdn.shopify.com/s/files/1/0", // Replace this with the product image's URL.
+    productDescription: ["This PREMIUM snowboard is so SUPER DUPER awesome!"],
+    originalPrice: "699.95",
+    discountedPrice: "699.95",
+    changes: [
+      {
+        type: "add_variant",
+        variantID: 123456789, // Replace with the variant ID.
+        quantity: 1,
+        discount: {
+          value: 15,
+          valueType: "percentage",
+          title: "15% off",
+        },
+      },
+    ],
+  },
+];
+
+/*
+ * For testing purposes, product information is hardcoded.
+ * In a production application, replace this function with logic to determine
+ * what product to offer to the customer.
+ */
+export function getOffers() {
+  return OFFERS;
+}
+
+/*
+ * Retrieve discount information for the specific order on the backend instead of relying
+ * on the discount information that is sent from the frontend.
+ * This is to ensure that the discount information is not tampered with.
+ */
+export function getSelectedOffer(offerId) {
+  return OFFERS.find((offer) => offer.id === offerId);
 }
