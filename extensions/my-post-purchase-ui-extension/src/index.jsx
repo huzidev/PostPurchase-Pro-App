@@ -16,8 +16,12 @@ import {
   Layout,
 } from "@shopify/post-purchase-ui-extensions-react";
 
+
+console.log("SW Staging code has been run");
 // For local development, replace APP_URL with your local tunnel URL.
 const APP_URL = "https://post-purchase-pro-app.vercel.app";
+
+console.log("SW what is APP url in stagin", APP_URL);
 
 // Preload data from your app server to ensure that the extension loads quickly.
 extend(
