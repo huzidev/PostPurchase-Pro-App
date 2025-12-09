@@ -18,6 +18,7 @@ import {
 
 // For local development, replace APP_URL with your local tunnel URL.
 const APP_URL = "https://post-purchase-pro-app.vercel.app";
+// const APP_URL = "https://lounge-gauge-paragraph-highest.trycloudflare.com";
 
 // Preload data from your app server to ensure that the extension loads quickly.
 extend(
@@ -25,10 +26,23 @@ extend(
   async ({ inputData, storage }) => {
     try {
       console.log("SW extension code has been Started");
+      
+      // Helper function to extract numeric ID from GID
+      const extractNumericId = (gid, returnAsInt = false) => {
+        if (!gid) return null;
+        let numericId;
+        if (typeof gid === 'string' && gid.startsWith('gid://')) {
+          numericId = gid.split('/').pop();
+        } else {
+          numericId = gid;
+        }
+        return returnAsInt ? parseInt(numericId) : numericId;
+      };
+
       // Get purchased products from the initial purchase
       const purchasedProducts = (inputData.initialPurchase.lineItems || []).map(lineItem => ({
-        productId: lineItem.product.id,
-        variantId: lineItem.product.variant.id,
+        productId: extractNumericId(lineItem.product.id),
+        variantId: extractNumericId(lineItem.product.variant.id),
         title: lineItem.product.title,
         variantTitle: lineItem.product.variant.title,
       }));
@@ -64,37 +78,47 @@ extend(
       }
 
       // Convert to the format expected by the UI
-      const formattedOffers = uniqueOffers.map(offer => ({
-        id: offer.id,
-        title: offer.offer_title || "Special Offer",
-        productTitle: offer.products && offer.products.length > 0 
-          ? offer.products[0].product_title 
-          : "Special Product",
-        productImageURL: offer.products && offer.products.length > 0 && offer.products[0].image_url
-          ? offer.products[0].image_url
-          : "https://cdn.shopify.com/s/files/1/0070/7032/files/placeholder-images-image_large.png",
-        productDescription: [offer.offer_description || "Amazing deal just for you!"],
-        originalPrice: offer.products && offer.products.length > 0 
-          ? (offer.products[0].variant_price || offer.products[0].product_price || "0").replace('$', '')
-          : "0",
-        discountedPrice: "0", // Will be calculated by Shopify
-        changes: [
-          {
-            type: "add_variant",
-            variantID: offer.products && offer.products.length > 0 && offer.products[0].shopify_variant_id
-              ? parseInt(offer.products[0].shopify_variant_id)
-              : parseInt(offer.products[0]?.shopify_product_id || 0),
-            quantity: 1,
-            discount: {
-              value: offer.discount_value || 0,
-              valueType: offer.discount_type === 'percentage' ? "percentage" : "fixedAmount",
-              title: offer.discount_type === 'percentage' 
-                ? `${offer.discount_value}% off`
-                : `$${offer.discount_value} off`,
+      const formattedOffers = uniqueOffers.map((offer, index) => {
+        const offerProduct = offer.products && offer.products.length > 0 ? offer.products[0] : null;
+        
+        // Extract numeric variant ID, fallback to product ID if no variant
+        let variantID = null;
+        if (offerProduct?.shopify_variant_id) {
+          variantID = extractNumericId(offerProduct.shopify_variant_id, true);
+        } else if (offerProduct?.shopify_product_id) {
+          variantID = extractNumericId(offerProduct.shopify_product_id, true);
+        }
+
+        // Clean price values (remove $ and convert to number format)
+        const cleanPrice = (price) => {
+          if (!price) return "0";
+          return price.toString().replace('$', '').replace(',', '');
+        };
+
+        return {
+          id: index + 1, // Use sequential ID as expected by the UI
+          title: offer.offer_title || "Special Offer",
+          productTitle: offerProduct?.product_title || "Special Product",
+          productImageURL: offerProduct?.image_url || "https://cdn.shopify.com/s/files/1/0070/7032/files/placeholder-images-image_large.png",
+          productDescription: [offer.offer_description || "Amazing deal just for you!"],
+          originalPrice: cleanPrice(offerProduct?.variant_price || offerProduct?.product_price || "0"),
+          discountedPrice: cleanPrice(offerProduct?.variant_price || offerProduct?.product_price || "0"), // Will be calculated by Shopify
+          changes: [
+            {
+              type: "add_variant",
+              variantID: variantID || 0,
+              quantity: 1,
+              discount: {
+                value: offer.discount_value || 0,
+                valueType: offer.discount_type === 'percentage' ? "percentage" : "fixedAmount",
+                title: offer.discount_type === 'percentage' 
+                  ? `${offer.discount_value}% off`
+                  : `$${offer.discount_value} off`,
+              },
             },
-          },
-        ],
-      }));
+          ],
+        };
+      });
 
       console.log("SW what is formattedOffers", formattedOffers);
 
