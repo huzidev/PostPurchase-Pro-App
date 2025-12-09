@@ -24,84 +24,89 @@ extend(
   "Checkout::PostPurchase::ShouldRender",
   async ({ inputData, storage }) => {
     try {
-      // Get purchased products from the initial purchase
       const purchasedProducts = inputData.initialPurchase.lineItems || [];
-      
-      // Fetch offers for each purchased product
+
+      // Prepare payload for POST request
+      const payload = purchasedProducts.map((lineItem) => ({
+        productId: lineItem.product.id,
+        variantId: lineItem.product.variant.id,
+      }));
+
+      // Send POST request to fetch offers
+      const response = await fetch(`${APP_URL}/api/offer`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${inputData.token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          shopDomain: inputData.shop.domain,
+          products: payload,
+        }),
+      });
+
       let allOffers = [];
-      
-      for (const lineItem of purchasedProducts) {
-        const productId = lineItem.product.id;
-        const variantId = lineItem.product.variant.id;
-        
-        try {
-          const response = await fetch(
-            `${APP_URL}/api/offer?productId=${productId}&variantId=${variantId}&shop=${inputData.shop.domain}`, 
-            {
-              method: "GET",
-              headers: {
-                Authorization: `Bearer ${inputData.token}`,
-                "Content-Type": "application/json",
-              },
-            }
-          );
-          
-          if (response.ok) {
-            const result = await response.json();
-            if (result.offers && result.offers.length > 0) {
-              allOffers = allOffers.concat(result.offers);
-            }
-          }
-        } catch (error) {
-          console.error(`Error fetching offers for product ${productId}:`, error);
+      if (response.ok) {
+        const result = await response.json();
+        if (result.offers && result.offers.length > 0) {
+          allOffers = result.offers;
         }
       }
 
-      // Remove duplicate offers (in case multiple purchased products trigger the same offer)
-      const uniqueOffers = allOffers.filter((offer, index, self) => 
-        index === self.findIndex(o => o.id === offer.id)
+      // Remove duplicate offers
+      const uniqueOffers = allOffers.filter(
+        (offer, index, self) => index === self.findIndex((o) => o.id === offer.id)
       );
 
-      // Convert to the format expected by the UI
-      const formattedOffers = uniqueOffers.map(offer => ({
-        id: offer.id,
-        title: offer.offer_title || "Special Offer",
-        productTitle: offer.products && offer.products.length > 0 
-          ? offer.products[0].product_title 
-          : "Special Product",
-        productImageURL: offer.products && offer.products.length > 0 && offer.products[0].image_url
-          ? offer.products[0].image_url
-          : "https://cdn.shopify.com/s/files/1/0070/7032/files/placeholder-images-image_large.png",
-        productDescription: [offer.offer_description || "Amazing deal just for you!"],
-        originalPrice: offer.products && offer.products.length > 0 
-          ? (offer.products[0].variant_price || offer.products[0].product_price || "0").replace('$', '')
-          : "0",
-        discountedPrice: "0", // Will be calculated by Shopify
-        changes: [
-          {
-            type: "add_variant",
-            variantID: offer.products && offer.products.length > 0 && offer.products[0].shopify_variant_id
-              ? parseInt(offer.products[0].shopify_variant_id)
-              : parseInt(offer.products[0]?.shopify_product_id || 0),
-            quantity: 1,
-            discount: {
-              value: offer.discount_value || 0,
-              valueType: offer.discount_type === 'percentage' ? "percentage" : "fixedAmount",
-              title: offer.discount_type === 'percentage' 
-                ? `${offer.discount_value}% off`
-                : `$${offer.discount_value} off`,
-            },
-          },
-        ],
-      }));
+      // Format offers for Shopify UI
+      const formattedOffers = uniqueOffers
+        .map((offer) => {
+          const firstProduct = offer.products?.[0];
+          if (!firstProduct) return null;
+
+          const variantID = firstProduct.shopify_variant_id
+            ? parseInt(firstProduct.shopify_variant_id)
+            : firstProduct.shopify_product_id
+            ? parseInt(firstProduct.shopify_product_id)
+            : null;
+
+          if (!variantID) return null;
+
+          return {
+            id: offer.id,
+            title: offer.offer_title || "Special Offer",
+            productTitle: firstProduct.product_title || "Special Product",
+            productImageURL:
+              firstProduct.image_url ||
+              "https://cdn.shopify.com/s/files/1/0070/7032/files/placeholder-images-image_large.png",
+            productDescription: [offer.offer_description || "Amazing deal just for you!"],
+            originalPrice:
+              (firstProduct.variant_price || firstProduct.product_price || "0").replace(/[^\d.]/g, ""),
+            discountedPrice: "0",
+            changes: [
+              {
+                type: "add_variant",
+                variantID,
+                quantity: 1,
+                discount: {
+                  value: offer.discount_value || 0,
+                  valueType: offer.discount_type === "percentage" ? "percentage" : "fixedAmount",
+                  title:
+                    offer.discount_type === "percentage"
+                      ? `${offer.discount_value}% off`
+                      : `$${offer.discount_value} off`,
+                },
+              },
+            ],
+          };
+        })
+        .filter(Boolean);
 
       await storage.update({ offers: formattedOffers });
 
-      // Only show the post-purchase page if we have offers
       return { render: formattedOffers.length > 0 };
     } catch (error) {
       console.error("Error in ShouldRender:", error);
-      // Fallback to not showing the extension if there's an error
       return { render: false };
     }
   }
