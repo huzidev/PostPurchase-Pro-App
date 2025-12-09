@@ -73,11 +73,28 @@ export function OfferForm({
         variantsCount: product.variants_count || 1,
       }));
 
+      // Normalize purchased product data from database to match ResourcePicker format
+      const normalizedPurchasedProducts = (offer.purchasedProducts || []).map(product => ({
+        ...product,
+        // Ensure all expected fields are available
+        id: product.shopify_product_id,
+        title: product.product_title,
+        variantId: product.shopify_variant_id,
+        variantTitle: product.variant_title,
+        price: product.variant_price || product.product_price,
+        displayTitle: product.variant_title 
+          ? `${product.product_title} - ${product.variant_title}`
+          : product.product_title,
+        imageUrl: product.image_url,
+        variantsCount: product.variants_count || 1,
+      }));
+
       return {
         name: offer.name || '',
         description: offer.description || '',
         status: offer.status || 'active',
         selectedProducts: normalizedProducts,
+        selectedPurchasedProducts: normalizedPurchasedProducts,
         discountType: offer.discount_type || 'percentage',
         discountValue: offer.discount_value?.toString() || '10',
         offerTitle: offer.offer_title || 'Special Offer Just For You!',
@@ -97,6 +114,7 @@ export function OfferForm({
       description: '',
       status: 'active',
       selectedProducts: [],
+      selectedPurchasedProducts: [],
       discountType: 'percentage',
       discountValue: '10',
       offerTitle: 'Special Offer Just For You!',
@@ -255,10 +273,111 @@ export function OfferForm({
     }
   }, [app, formData]);
 
+  const handleSelectPurchasedProducts = useCallback(async () => {
+    if (!app) {
+      console.error('App Bridge not available');
+      return;
+    }
+
+    try {
+      const selected = await app.resourcePicker({
+        type: 'product',
+        multiple: true,
+      });
+      console.log("SW what is selected PURCHASED PRODUCT", selected);
+
+      if (selected && selected.length > 0) {
+        // Create entries for each variant of each selected product
+        const selectedProductVariants = [];
+        
+        selected.forEach(product => {
+          if (product.variants && product.variants.length > 0) {
+            // Create an entry for each variant
+            product.variants.forEach(variant => {
+              const productVariantEntry = {
+                // Product info
+                id: product.id,
+                title: product.title,
+                vendor: product.vendor || '',
+                
+                // Variant info
+                variantId: variant.id,
+                variantTitle: variant.title,
+                variantDisplayName: variant.displayName,
+                variantPrice: `$${variant.price}`,
+                
+                // Image (use product image)
+                imageUrl: product.images && product.images.length > 0 ? 
+                  product.images[0].originalSrc : null,
+                
+                // Combined display info
+                displayTitle: `${product.title} - ${variant.title}`,
+                price: `$${variant.price}`,
+                variantsCount: product.variants.length,
+              };
+              selectedProductVariants.push(productVariantEntry);
+            });
+          } else {
+            // Fallback: product without variants
+            const productEntry = {
+              id: product.id,
+              title: product.title,
+              variantId: null,
+              variantTitle: null,
+              variantDisplayName: null,
+              variantPrice: null,
+              imageUrl: product.images && product.images.length > 0 ? 
+                product.images[0].originalSrc : null,
+              displayTitle: product.title,
+              price: 'Price not available',
+              variantsCount: 0,
+              vendor: product.vendor || '',
+            };
+            selectedProductVariants.push(productEntry);
+          }
+        });
+
+        // Add selected product variants to form data, avoiding duplicates
+        const updatedProducts = [...formData.selectedPurchasedProducts];
+        selectedProductVariants.forEach(newProductVariant => {
+          // Check for duplicates based on product ID + variant ID combination
+          const isDuplicate = updatedProducts.some(existingProduct => 
+            existingProduct.id === newProductVariant.id && 
+            existingProduct.variantId === newProductVariant.variantId
+          );
+          
+          if (!isDuplicate) {
+            updatedProducts.push(newProductVariant);
+          }
+        });
+
+        setFormData({ ...formData, selectedPurchasedProducts: updatedProducts });
+      }
+
+    } catch (error) {
+      console.error('Error opening resource picker for purchased products:', error);
+      // Handle cancellation or other errors gracefully
+      if (error.message !== 'User cancelled resource selection') {
+        setToastMessage('Unable to open product picker. Please try again.');
+        setToastError(true);
+        setShowToast(true);
+      }
+    }
+  }, [app, formData]);
+
   const handleRemoveProduct = useCallback((productId, variantId = null) => {
     setFormData({ 
       ...formData, 
       selectedProducts: formData.selectedProducts.filter(p => 
+        !(p.id === productId && p.variantId === variantId)
+      ) 
+    });
+  }, [formData]);
+
+  const handleRemovePurchasedProduct = useCallback((productId, variantId = null) => {
+    setFormData({ 
+      ...formData, 
+      selectedPurchasedProducts: formData.selectedPurchasedProducts.filter(p => 
         !(p.id === productId && p.variantId === variantId)
       ) 
     });
@@ -294,6 +413,8 @@ export function OfferForm({
     Object.entries(formData).forEach(([key, value]) => {
       if (key === 'selectedProducts') {
         submitData.append("products", JSON.stringify(value));
+      } else if (key === 'selectedPurchasedProducts') {
+        submitData.append("purchasedProducts", JSON.stringify(value));
       } else if (typeof value === 'boolean') {
         submitData.append(key, value.toString());
       } else if (value !== null && value !== undefined) {
@@ -427,14 +548,77 @@ export function OfferForm({
               <BlockStack gap="400">
                 <InlineStack align="space-between" blockAlign="center">
                   <Text as="h2" variant="headingMd">
-                    Offer Details
+                    Trigger Products
                   </Text>
-                  <Tooltip content="Configure what product to offer and at what discount">
+                  <Tooltip content="Products that trigger this offer when purchased">
                     <Icon source={QuestionCircleIcon} tone="subdued" />
                   </Tooltip>
                 </InlineStack>
                 <Text as="p" variant="bodyMd" tone="subdued">
-                  Choose the products you want to offer to customers
+                  Choose which products will trigger this offer when customers purchase them
+                </Text>
+                <Divider />
+                <FormLayout>
+                  {formData.selectedPurchasedProducts.length > 0 && (
+                    <BlockStack gap="300">
+                      {formData.selectedPurchasedProducts.map((product, index) => (
+                        <Card key={`purchased-${product.id}-${product.variantId || 'default'}-${index}`}>
+                          <div style={{ padding: '12px' }}>
+                            <InlineStack gap="400" align="space-between" blockAlign="center">
+                              <InlineStack gap="300" blockAlign="center">
+                                <Thumbnail
+                                  source={product.imageUrl || ImageIcon}
+                                  alt={product.displayTitle || product.title}
+                                  size="small"
+                                />
+                                <BlockStack gap="100">
+                                  <Text as="p" variant="bodyMd" fontWeight="semibold">
+                                    {product.displayTitle || product.title}
+                                  </Text>
+                                  <Text as="p" variant="bodySm" tone="subdued">
+                                    {product.price || product.variant_price || product.product_price || 'Price not available'}
+                                    {product.variantTitle && ` • Variant: ${product.variantTitle}`}
+                                  </Text>
+                                </BlockStack>
+                              </InlineStack>
+                              <Button
+                                variant="tertiary"
+                                tone="critical"
+                                onClick={() => handleRemovePurchasedProduct(product.id, product.variantId)}
+                              >
+                                Remove
+                              </Button>
+                            </InlineStack>
+                          </div>
+                        </Card>
+                      ))}
+                    </BlockStack>
+                  )}
+
+                  <Button
+                    variant="secondary"
+                    icon={PlusIcon}
+                    onClick={handleSelectPurchasedProducts}
+                    fullWidth
+                  >
+                    {formData.selectedPurchasedProducts.length > 0 ? 'Add More Trigger Products' : 'Select Trigger Products'}
+                  </Button>
+                </FormLayout>
+              </BlockStack>
+            </Card>
+
+            <Card>
+              <BlockStack gap="400">
+                <InlineStack align="space-between" blockAlign="center">
+                  <Text as="h2" variant="headingMd">
+                    Products to Offer
+                  </Text>
+                  <Tooltip content="Configure what products to offer and at what discount">
+                    <Icon source={QuestionCircleIcon} tone="subdued" />
+                  </Tooltip>
+                </InlineStack>
+                <Text as="p" variant="bodyMd" tone="subdued">
+                  Choose the products you want to offer to customers as part of this deal
                 </Text>
                 <Divider />
                 <FormLayout>

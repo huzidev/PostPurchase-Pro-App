@@ -76,6 +76,7 @@ export const action = async ({ request }) => {
         scheduleStart: formData.get("scheduleStart"),
         enableABTest: formData.get("enableABTest") === "true",
         products: JSON.parse(formData.get("products") || "[]"),
+        purchasedProducts: JSON.parse(formData.get("purchasedProducts") || "[]"),
       };
       
       const result = await offerService.createOffer(offerData);

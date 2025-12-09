@@ -8,8 +8,9 @@ export default class Offer {
   // Create a new offer
   async createOffer(offerData) {
     try {
-      const { products, ...offerInfo } = offerData;
+      const { products, purchasedProducts, ...offerInfo } = offerData;
       
+      // First, create the basic offer without relationships
       const offer = await db.offer.create({
         data: {
           shopify_url: this.shopify_url,
@@ -26,8 +27,32 @@ export default class Offer {
           expiry_date: offerInfo.expiryDate ? new Date(offerInfo.expiryDate) : null,
           schedule_start: offerInfo.scheduleStart ? new Date(offerInfo.scheduleStart) : null,
           enable_ab_test: offerInfo.enableABTest || false,
-          products: {
-            create: (products || []).map(product => ({
+        },
+      });
+
+      // Create products relationship
+      if (products && products.length > 0) {
+        await db.offerProduct.createMany({
+          data: products.map(product => ({
+            offer_id: offer.id,
+            shopify_product_id: product.id,
+            shopify_variant_id: product.variantId || null,
+            product_title: product.title,
+            variant_title: product.variantTitle || null,
+            product_price: product.price || '0',
+            variant_price: product.variantPrice || null,
+            image_url: product.imageUrl,
+            variants_count: product.variantsCount || 1,
+          })),
+        });
+      }
+
+      // Try to create purchasedProducts relationship if the table exists
+      if (purchasedProducts && purchasedProducts.length > 0) {
+        try {
+          await db.purchasedProduct.createMany({
+            data: purchasedProducts.map(product => ({
+              offer_id: offer.id,
               shopify_product_id: product.id,
               shopify_variant_id: product.variantId || null,
               product_title: product.title,
@@ -37,17 +62,26 @@ export default class Offer {
               image_url: product.imageUrl,
               variants_count: product.variantsCount || 1,
             })),
-          },
-        },
+          });
+        } catch (error) {
+          console.warn("Could not create purchased products - table may not exist yet:", error.message);
+          // Continue without purchased products for now
+        }
+      }
+
+      // Return the offer with relationships if available
+      const offerWithRelations = await db.offer.findUnique({
+        where: { id: offer.id },
         include: {
           products: true,
+          ...(await this.checkIfPurchasedProductsExists() ? { purchasedProducts: true } : {}),
         },
       });
 
       return {
         status: 200,
         message: "Offer created successfully",
-        offer,
+        offer: offerWithRelations || offer,
       };
     } catch (error) {
       console.error("Error creating offer:", error);
@@ -68,6 +102,7 @@ export default class Offer {
         },
         include: {
           products: true,
+          purchasedProducts: true,
           analytics: true,
         },
         orderBy: {
@@ -100,6 +135,7 @@ export default class Offer {
         },
         include: {
           products: true,
+          purchasedProducts: true,
           analytics: true,
         },
       });
@@ -129,7 +165,7 @@ export default class Offer {
   // Update an existing offer
   async updateOffer(offerId, offerData) {
     try {
-      const { products, ...offerInfo } = offerData;
+      const { products, purchasedProducts, ...offerInfo } = offerData;
 
       // First, delete existing products
       await db.offerProduct.deleteMany({
@@ -137,6 +173,17 @@ export default class Offer {
           offer_id: offerId,
         },
       });
+      
+      // Try to delete existing purchased products if the table exists
+      try {
+        await db.purchasedProduct.deleteMany({
+          where: {
+            offer_id: offerId,
+          },
+        });
+      } catch (error) {
+        console.warn("Could not delete purchased products - table may not exist yet:", error.message);
+      }
 
       // Update the offer with new data
       const offer = await db.offer.update({
@@ -157,8 +204,32 @@ export default class Offer {
           expiry_date: offerInfo.expiryDate ? new Date(offerInfo.expiryDate) : null,
           schedule_start: offerInfo.scheduleStart ? new Date(offerInfo.scheduleStart) : null,
           enable_ab_test: offerInfo.enableABTest || false,
-          products: {
-            create: (products || []).map(product => ({
+        },
+      });
+
+      // Create new products
+      if (products && products.length > 0) {
+        await db.offerProduct.createMany({
+          data: products.map(product => ({
+            offer_id: offerId,
+            shopify_product_id: product.id,
+            shopify_variant_id: product.variantId || null,
+            product_title: product.title,
+            variant_title: product.variantTitle || null,
+            product_price: product.price || '0',
+            variant_price: product.variantPrice || null,
+            image_url: product.imageUrl,
+            variants_count: product.variantsCount || 1,
+          })),
+        });
+      }
+
+      // Try to create new purchased products if the table exists
+      if (purchasedProducts && purchasedProducts.length > 0) {
+        try {
+          await db.purchasedProduct.createMany({
+            data: purchasedProducts.map(product => ({
+              offer_id: offerId,
               shopify_product_id: product.id,
               shopify_variant_id: product.variantId || null,
               product_title: product.title,
@@ -168,17 +239,25 @@ export default class Offer {
               image_url: product.imageUrl,
               variants_count: product.variantsCount || 1,
             })),
-          },
-        },
+          });
+        } catch (error) {
+          console.warn("Could not create purchased products - table may not exist yet:", error.message);
+        }
+      }
+
+      // Return the offer with relationships if available
+      const offerWithRelations = await db.offer.findUnique({
+        where: { id: offerId },
         include: {
           products: true,
+          ...(await this.checkIfPurchasedProductsExists() ? { purchasedProducts: true } : {}),
         },
       });
 
       return {
         status: 200,
         message: "Offer updated successfully",
-        offer,
+        offer: offerWithRelations || offer,
       };
     } catch (error) {
       console.error("Error updating offer:", error);
@@ -276,7 +355,7 @@ export default class Offer {
   }
 
   // Get offers by purchased product ID (for post-purchase extension)
-  async getOffersByProduct(productId, variantId = null) {
+  async getOffersByPurchasedProduct(productId, variantId = null) {
     try {
       const offers = await db.offer.findMany({
         where: {
@@ -296,15 +375,32 @@ export default class Offer {
               ]
             }
           ],
-          products: {
+          purchasedProducts: {
             some: {
-              shopify_product_id: productId,
-              ...(variantId && { shopify_variant_id: variantId })
+              OR: [
+                // Try GID format
+                {
+                  shopify_product_id: String(productId),
+                  ...(variantId && { shopify_variant_id: String(variantId) })
+                },
+                // Try numeric format (extract from GID if it's stored as GID)
+                {
+                  shopify_product_id: {
+                    endsWith: `/${productId}`
+                  },
+                  ...(variantId && { 
+                    shopify_variant_id: {
+                      endsWith: `/${variantId}`
+                    }
+                  })
+                }
+              ]
             }
           }
         },
         include: {
           products: true,
+          purchasedProducts: true,
         },
         orderBy: {
           createdAt: 'desc',
@@ -323,6 +419,16 @@ export default class Offer {
         message: "Failed to fetch offers",
         error: error.message,
       };
+    }
+  }
+
+  // Helper method to check if purchasedProduct table exists
+  async checkIfPurchasedProductsExists() {
+    try {
+      await db.purchasedProduct.findFirst();
+      return true;
+    } catch (error) {
+      return false;
     }
   }
 }

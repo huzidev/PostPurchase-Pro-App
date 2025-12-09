@@ -1,11 +1,11 @@
 name = "my-post-purchase-ui-extension"
 type = "checkout_post_purchase"
-uid = "f4f18f33-70b3-5b25-0d55-cd88c77f38c11834ada3"
+uid = "f4f18f33-70b3-5b25-0d55-cd88c77f38c1"
 
-# [[metafields]]
-# namespace = "my-namespace"
-# key = "my-key"
+[capabilities]
+network_access = true
 
-# [[metafields]]
-# namespace = "my-namespace"
-# key = "my-key-2"
+[network_access]
+allowed_urls = [
+  "https://post-purchase-pro-app.vercel.app",
+]

@@ -2,10 +2,10 @@ generator client {
   provider = "prisma-client-js"
 }
 
- datasource db {
-   provider = "postgresql"
-   url      = env("post_purchase_app_DATABASE_URL")
- }
+datasource db {
+  provider = "postgresql"
+  url      = env("post_purchase_app_DATABASE_URL")
+}
 
 model Session {
   id            String    @id
@@ -45,26 +45,44 @@ model Subscription {
 }
 
 model Offer {
-  id                 String         @id @default(cuid())
+  id                 String            @id @default(cuid())
   shopify_url        String
   name               String
   description        String?
-  status             String         @default("active")
+  status             String            @default("active")
   discount_type      String
   discount_value     Float
   offer_title        String
   offer_description  String?
-  button_text        String         @default("Add to Order")
-  limit_per_customer Int            @default(1)
+  button_text        String            @default("Add to Order")
+  limit_per_customer Int               @default(1)
   total_limit        Int?
   expiry_date        DateTime?
   schedule_start     DateTime?
-  enable_ab_test     Boolean        @default(false)
-  createdAt          DateTime       @default(now())
-  updatedAt          DateTime       @updatedAt
+  enable_ab_test     Boolean           @default(false)
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
   analytics          Analytics[]
-  subscription       Subscription   @relation(fields: [shopify_url], references: [shopify_url])
+  subscription       Subscription      @relation(fields: [shopify_url], references: [shopify_url])
+  purchasedProducts  PurchasedProduct[]
   products           OfferProduct[]
+}
+
+model PurchasedProduct {
+  id                 String @id @default(cuid())
+  offer_id           String
+  shopify_product_id String
+  shopify_variant_id String?
+  product_title      String
+  variant_title      String?
+  product_price      String
+  variant_price      String?
+  image_url          String?
+  variants_count     Int    @default(1)
+  createdAt          DateTime @default(now())
+  offer              Offer @relation(fields: [offer_id], references: [id], onDelete: Cascade)
+
+  @@unique([offer_id, shopify_product_id, shopify_variant_id])
 }
 
 model OfferProduct {
