@@ -18,7 +18,7 @@ import {
 
 // For local development, replace APP_URL with your local tunnel URL.
 const APP_URL = "https://post-purchase-pro-app.vercel.app";
-// const APP_URL = "https://lounge-gauge-paragraph-highest.trycloudflare.com";
+// const APP_URL = "https://suggestion-indicators-doom-coaching.trycloudflare.com";
 
 // Preload data from your app server to ensure that the extension loads quickly.
 extend(
@@ -77,47 +77,55 @@ extend(
         console.error('Error fetching offers:', error);
       }
 
-      // Convert to the format expected by the UI
-      const formattedOffers = uniqueOffers.map((offer, index) => {
-        const offerProduct = offer.products && offer.products.length > 0 ? offer.products[0] : null;
-        
-        // Extract numeric variant ID, fallback to product ID if no variant
-        let variantID = null;
-        if (offerProduct?.shopify_variant_id) {
-          variantID = extractNumericId(offerProduct.shopify_variant_id, true);
-        } else if (offerProduct?.shopify_product_id) {
-          variantID = extractNumericId(offerProduct.shopify_product_id, true);
+      // Convert to the format expected by the UI - create separate offers for each product
+      const formattedOffers = [];
+      
+      uniqueOffers.forEach((offer) => {
+        // Create an offer for each product in the offer
+        if (offer.products && offer.products.length > 0) {
+          offer.products.forEach((offerProduct, productIndex) => {
+            // Extract numeric variant ID, fallback to product ID if no variant
+            let variantID = null;
+            if (offerProduct?.shopify_variant_id) {
+              variantID = extractNumericId(offerProduct.shopify_variant_id, true);
+            } else if (offerProduct?.shopify_product_id) {
+              variantID = extractNumericId(offerProduct.shopify_product_id, true);
+            }
+
+            // Clean price values (remove $ and convert to number format)
+            const cleanPrice = (price) => {
+              if (!price) return "0";
+              return price.toString().replace('$', '').replace(',', '');
+            };
+
+            formattedOffers.push({
+              id: formattedOffers.length + 1, // Use sequential ID as expected by the UI
+              title: offer.offer_title || "Special Offer",
+              productTitle: offerProduct?.product_title || "Special Product",
+              productImageURL: offerProduct?.image_url || "https://cdn.shopify.com/s/files/1/0070/7032/files/placeholder-images-image_large.png",
+              productDescription: [offer.offer_description || "Amazing deal just for you!"],
+              originalPrice: cleanPrice(offerProduct?.variant_price || offerProduct?.product_price || "0"),
+              discountedPrice: cleanPrice(offerProduct?.variant_price || offerProduct?.product_price || "0"), // Will be calculated by Shopify
+              changes: [
+                {
+                  type: "add_variant",
+                  variantID: variantID || 0,
+                  quantity: 1,
+                  discount: {
+                    value: offer.discount_value || 0,
+                    valueType: offer.discount_type === 'percentage' ? "percentage" : "fixedAmount",
+                    title: offer.discount_type === 'percentage' 
+                      ? `${offer.discount_value}% off`
+                      : `$${offer.discount_value} off`,
+                  },
+                },
+              ],
+              // Store original offer data for reference
+              originalOffer: offer,
+              productIndex: productIndex,
+            });
+          });
         }
-
-        // Clean price values (remove $ and convert to number format)
-        const cleanPrice = (price) => {
-          if (!price) return "0";
-          return price.toString().replace('$', '').replace(',', '');
-        };
-
-        return {
-          id: index + 1, // Use sequential ID as expected by the UI
-          title: offer.offer_title || "Special Offer",
-          productTitle: offerProduct?.product_title || "Special Product",
-          productImageURL: offerProduct?.image_url || "https://cdn.shopify.com/s/files/1/0070/7032/files/placeholder-images-image_large.png",
-          productDescription: [offer.offer_description || "Amazing deal just for you!"],
-          originalPrice: cleanPrice(offerProduct?.variant_price || offerProduct?.product_price || "0"),
-          discountedPrice: cleanPrice(offerProduct?.variant_price || offerProduct?.product_price || "0"), // Will be calculated by Shopify
-          changes: [
-            {
-              type: "add_variant",
-              variantID: variantID || 0,
-              quantity: 1,
-              discount: {
-                value: offer.discount_value || 0,
-                valueType: offer.discount_type === 'percentage' ? "percentage" : "fixedAmount",
-                title: offer.discount_type === 'percentage' 
-                  ? `${offer.discount_value}% off`
-                  : `$${offer.discount_value} off`,
-              },
-            },
-          ],
-        };
       });
 
       console.log("SW what is formattedOffers", formattedOffers);
@@ -143,8 +151,12 @@ export function App() {
   const [calculatedPurchase, setCalculatedPurchase] = useState();
 
   const { offers } = storage.initialData;
+  console.log("offers storage", storage);
 
-  const purchaseOption = offers[0];
+  const [currentOfferIndex, setCurrentOfferIndex] = useState(0);
+  console.log("currentOfferIndex", currentOfferIndex);
+  const purchaseOption = offers[currentOfferIndex];
+  console.log("purchaseOption", purchaseOption);
 
   // Define the changes that you want to make to the purchase, including the discount to the product.
   useEffect(() => {
@@ -154,13 +166,15 @@ export function App() {
         changes: purchaseOption.changes,
       });
 
+      console.log("calculatedPurchaseResult", result);
       setCalculatedPurchase(result.calculatedPurchase);
       setLoading(false);
     }
 
     calculatePurchase();
-  }, [calculateChangeset, purchaseOption.changes]);
+  }, [calculateChangeset, purchaseOption.changes, currentOfferIndex]);
 
+  // Extract values from the calculated purchase.
   // Extract values from the calculated purchase.
   const shipping =
     calculatedPurchase?.addedShippingLines[0]?.priceSet?.presentmentMoney
@@ -174,7 +188,11 @@ export function App() {
   const originalPrice =
     calculatedPurchase?.updatedLineItems[0].priceSet.presentmentMoney.amount;
 
+  console.log("calculatedPurchase", calculatedPurchase);
+
   async function acceptOffer() {
+    console.log("SW accept offer has been called");
+    console.log("offersssss storage", storage);
     setLoading(true);
 
     // Make a request to your app server to sign the changeset with your app's API secret key.
@@ -186,7 +204,8 @@ export function App() {
       },
       body: JSON.stringify({
         referenceId: inputData.initialPurchase.referenceId,
-        changes: purchaseOption.id,
+        offer: purchaseOption, // Send the complete offer object instead of just ID
+        storage: storage,
       }),
     })
       .then((response) => response.json())
@@ -195,15 +214,26 @@ export function App() {
 
     // Make a request to Shopify servers to apply the changeset.
     await applyChangeset(token);
-
+    console.log("applyChangeset token", token);
+    
     // Redirect to the thank-you page.
     done();
   }
 
   function declineOffer() {
     setLoading(true);
-    // Redirect to the thank-you page
-    done();
+
+    if (currentOfferIndex < offers.length - 1) {
+      setCurrentOfferIndex(currentOfferIndex + 1);
+      setLoading(false);
+      console.log(
+        `Offer declined. Moving to next offer: ${currentOfferIndex + 1}`
+      );
+    } else {
+      // No more offers, go to the thank you page
+      console.log("No more offers. Redirecting to the thank you page.");
+      done();
+    }
   }
 
   return (
