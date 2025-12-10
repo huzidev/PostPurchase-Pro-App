@@ -18,8 +18,8 @@ import {
 } from '@shopify/polaris';
 import { QuestionCircleIcon, ArrowUpIcon } from '@shopify/polaris-icons';
 
-export function Analytics({ onNavigate }) {
-  const [dateRange, setDateRange] = useState('last_30_days');
+export function Analytics({ onNavigate, initialAnalytics = null, initialOffers = [], initialDateRange = 'last_30_days' }) {
+  const [dateRange, setDateRange] = useState(initialDateRange);
 
   const dateRangeOptions = [
     { label: 'Last 7 days', value: 'last_7_days' },
@@ -28,19 +28,70 @@ export function Analytics({ onNavigate }) {
     { label: 'Last 12 months', value: 'last_12_months' },
   ];
 
-  const topPerformingOffers = [
-    ['Summer Sale Bundle', '1,543', '528', '34.2%', '$15,840'],
-    ['Winter Collection Bundle', '1,876', '773', '41.2%', '$23,190'],
-    ['Premium Accessories Upsell', '892', '251', '28.1%', '$7,530'],
-    ['Bestseller Add-on', '1,234', '389', '31.5%', '$11,670'],
-    ['15% Off Next Purchase', '2,341', '456', '19.5%', '$9,120'],
-  ];
+  // Handle date range change
+  const handleDateRangeChange = (newDateRange) => {
+    setDateRange(newDateRange);
+    // Redirect to update URL and trigger new data fetch
+    window.location.href = `/app/analytics?dateRange=${newDateRange}`;
+  };
 
+  // Format currency
+  const formatCurrency = (amount) => {
+    if (!amount || amount === 0) return '$0';
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+    }).format(amount);
+  };
+
+  // Format percentage
+  const formatPercentage = (rate) => {
+    if (!rate || rate === 0) return '0%';
+    return `${rate.toFixed(1)}%`;
+  };
+
+  // Prepare top performing offers data from real data
+  const topPerformingOffers = initialOffers
+    .sort((a, b) => (b.analytics?.revenue || 0) - (a.analytics?.revenue || 0))
+    .slice(0, 5)
+    .map((offer) => [
+      offer.name || 'Untitled Offer',
+      (offer.analytics?.impressions || 0).toLocaleString(),
+      (offer.analytics?.conversions || 0).toLocaleString(),
+      formatPercentage(offer.conversionRate || 0),
+      formatCurrency(offer.analytics?.revenue || 0),
+      <Badge key={offer.id} tone={offer.status === 'active' ? 'success' : 'warning'}>
+        {offer.status === 'active' ? 'Active' : 'Paused'}
+      </Badge>
+    ]);
+
+  // Calculate conversion funnel from analytics data
+  const totalImpressions = initialAnalytics?.impressions || 0;
+  const totalViews = initialAnalytics?.views || 0;
+  const totalConversions = initialAnalytics?.conversions || 0;
+  const totalDeclines = initialAnalytics?.declines || 0;
+  
   const conversionFunnel = [
-    { step: 'Offers Shown', count: 8756, percentage: 100 },
-    { step: 'Offers Viewed', count: 6842, percentage: 78.1 },
-    { step: 'Add to Cart Clicked', count: 2891, percentage: 33.0 },
-    { step: 'Offers Accepted', count: 2397, percentage: 27.4 },
+    { 
+      step: 'Offers Shown', 
+      count: totalImpressions, 
+      percentage: 100 
+    },
+    { 
+      step: 'Offers Viewed', 
+      count: totalViews, 
+      percentage: totalImpressions > 0 ? (totalViews / totalImpressions) * 100 : 0
+    },
+    { 
+      step: 'Customer Interaction', 
+      count: totalConversions + totalDeclines, 
+      percentage: totalImpressions > 0 ? ((totalConversions + totalDeclines) / totalImpressions) * 100 : 0
+    },
+    { 
+      step: 'Offers Accepted', 
+      count: totalConversions, 
+      percentage: totalImpressions > 0 ? (totalConversions / totalImpressions) * 100 : 0
+    },
   ];
 
   return (
@@ -60,7 +111,7 @@ export function Analytics({ onNavigate }) {
               labelHidden
               options={dateRangeOptions}
               value={dateRange}
-              onChange={setDateRange}
+              onChange={handleDateRangeChange}
             />
           </InlineStack>
         </Card>
@@ -80,12 +131,12 @@ export function Analytics({ onNavigate }) {
                     </Tooltip>
                   </InlineStack>
                   <Text as="h2" variant="headingXl">
-                    $67,350
+                    {formatCurrency(initialAnalytics?.total_revenue || 0)}
                   </Text>
                   <InlineStack gap="200" blockAlign="center">
                     <Icon source={ArrowUpIcon} tone="success" />
                     <Text as="p" variant="bodySm" tone="success">
-                      +18.5% vs previous period
+                      {totalConversions > 0 ? `${totalConversions} conversions` : 'No conversions yet'}
                     </Text>
                   </InlineStack>
                 </BlockStack>
@@ -102,12 +153,12 @@ export function Analytics({ onNavigate }) {
                     </Tooltip>
                   </InlineStack>
                   <Text as="h2" variant="headingXl">
-                    8,756
+                    {(initialAnalytics?.impressions || 0).toLocaleString()}
                   </Text>
                   <InlineStack gap="200" blockAlign="center">
                     <Icon source={ArrowUpIcon} tone="success" />
                     <Text as="p" variant="bodySm" tone="success">
-                      +12.3% vs previous period
+                      {totalViews > 0 ? `${totalViews.toLocaleString()} viewed` : 'No views yet'}
                     </Text>
                   </InlineStack>
                 </BlockStack>
@@ -124,12 +175,12 @@ export function Analytics({ onNavigate }) {
                     </Tooltip>
                   </InlineStack>
                   <Text as="h2" variant="headingXl">
-                    27.4%
+                    {formatPercentage(initialAnalytics?.conversion_rate || 0)}
                   </Text>
                   <InlineStack gap="200" blockAlign="center">
                     <Icon source={ArrowUpIcon} tone="success" />
                     <Text as="p" variant="bodySm" tone="success">
-                      +3.2% vs previous period
+                      {totalDeclines > 0 ? `${totalDeclines.toLocaleString()} declined` : 'No declines yet'}
                     </Text>
                   </InlineStack>
                 </BlockStack>
@@ -146,7 +197,7 @@ export function Analytics({ onNavigate }) {
                     </Tooltip>
                   </InlineStack>
                   <Text as="h2" variant="headingXl">
-                    $28.10
+                    {totalConversions > 0 ? formatCurrency((initialAnalytics?.total_revenue || 0) / totalConversions) : '$0'}
                   </Text>
                   <InlineStack gap="200" blockAlign="center">
                     <Icon source={ArrowUpIcon} tone="success" />
@@ -221,6 +272,7 @@ export function Analytics({ onNavigate }) {
                     'numeric',
                     'numeric',
                     'numeric',
+                    'text',
                   ]}
                   headings={[
                     'Offer Name',
@@ -228,6 +280,7 @@ export function Analytics({ onNavigate }) {
                     'Accepted',
                     'Conv. Rate',
                     'Revenue',
+                    'Status',
                   ]}
                   rows={topPerformingOffers}
                 />
@@ -243,9 +296,9 @@ export function Analytics({ onNavigate }) {
                   Insights & Recommendations
                 </Text>
                 <BlockStack gap="300">
-                  <Banner tone="success">
+                  <Banner tone={initialAnalytics?.conversion_rate > 20 ? "success" : "info"}>
                     <Text as="p" variant="bodyMd">
-                      <strong>Great performance!</strong> Your conversion rate is 27.4%, which is above the industry average of 20-25%.
+                      <strong>{initialAnalytics?.conversion_rate > 20 ? 'Great performance!' : 'Room for improvement!'}</strong> Your conversion rate is {formatPercentage(initialAnalytics?.conversion_rate || 0)}, {initialAnalytics?.conversion_rate > 20 ? 'which is above' : 'compared to'} the industry average of 20-25%.
                     </Text>
                   </Banner>
                   <Banner tone="info">
