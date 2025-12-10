@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 
 import { authenticate } from "../shopify.server";
 import { getSelectedOffer } from "../models/offer.server";
+import Analytics from "../models/analytics.server";
 
 // Shared CORS headers
 const CORS_HEADERS = {
@@ -46,6 +47,50 @@ export const action = async ({ request }) => {
     const selectedOffer = body.offer || getSelectedOffer(body.changes);
 
     console.log("SW what is selected Offer", selectedOffer);
+
+    // Calculate revenue amount from offer
+    const revenueAmount = selectedOffer?.changes?.reduce((total, change) => {
+      if (change.type === 'add_variant' && change.discount) {
+        const basePrice = parseFloat(selectedOffer.originalPrice) || 0;
+        const discountValue = change.discount.value || 0;
+        
+        if (change.discount.valueType === 'percentage') {
+          // For percentage discount, calculate actual revenue
+          return total + (basePrice - (basePrice * discountValue / 100));
+        } else {
+          // For fixed amount discount
+          return total + (basePrice - discountValue);
+        }
+      }
+      return total;
+    }, 0) || 0;
+
+    // Record conversion analytics if we have shop domain and offer ID
+    if (body.shopDomain && selectedOffer?.originalOffer?.id) {
+      try {
+        const analyticsService = new Analytics(body.shopDomain);
+        await analyticsService.recordOfferEvent({
+          offerId: selectedOffer.originalOffer.id,
+          eventType: 'accept',
+          customerId: body.customerId,
+          orderId: body.referenceId,
+          productId: selectedOffer.changes?.[0]?.variantID?.toString(),
+          revenueAmount: revenueAmount,
+          discountAmount: selectedOffer.changes?.[0]?.discount?.value || 0,
+          sessionId: body.sessionId,
+          userAgent: body.userAgent,
+          ipAddress: body.ipAddress,
+          eventData: {
+            offerTitle: selectedOffer.title,
+            offerContext: 'post_purchase_accept',
+            changes: selectedOffer.changes,
+          },
+        });
+      } catch (error) {
+        console.error("Error recording conversion analytics:", error);
+        // Don't fail the changeset signing if analytics fails
+      }
+    }
 
     const payload = {
       iss: process.env.SHOPIFY_API_KEY,

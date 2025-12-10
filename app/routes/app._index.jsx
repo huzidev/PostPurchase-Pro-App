@@ -5,6 +5,7 @@ import { authenticate } from "../shopify.server";
 import { Dashboard } from './components/Dashboard';
 import Subscription from "../models/subscription.server";
 import Offer from "../models/offer.server";
+import Analytics from "../models/analytics.server";
 
 export const loader = async ({ request }) => {
   const { session, admin } = await authenticate.admin(request);
@@ -17,6 +18,11 @@ export const loader = async ({ request }) => {
     // Check if shop has any offers
     const offerService = new Offer(session.shop);
     const hasOffers = await offerService.hasOffers();
+    
+    // Fetch analytics data
+    const analyticsService = new Analytics(session.shop);
+    const analyticsResult = await analyticsService.getDashboardAnalytics();
+    const analytics = analyticsResult.status === 200 ? analyticsResult.analytics : null;
     
     // Fetch current subscription for immediate use
     const activeShopifySubscription = await subscriptionService.getActiveSubscription(
@@ -49,16 +55,16 @@ export const loader = async ({ request }) => {
       subscription = currentSubscription.subscription;
     }
     
-    return { hasOffers, subscription };
+    return { hasOffers, subscription, analytics };
   } catch (error) {
     console.error("Error in dashboard loader:", error);
-    return { hasOffers: false, subscription: null };
+    return { hasOffers: false, subscription: null, analytics: null };
   }
 };
 
 export default function Index() {
   const navigate = useNavigate();
-  const { hasOffers, subscription: loaderSubscription } = useLoaderData();
+  const { hasOffers, subscription: loaderSubscription, analytics } = useLoaderData();
 
   const onNavigate = (page) => {
     switch (page) {
@@ -77,7 +83,7 @@ export default function Index() {
     }
   };
 
-  return <Dashboard onNavigate={onNavigate} hasOffers={hasOffers} initialSubscription={loaderSubscription} />;
+  return <Dashboard onNavigate={onNavigate} hasOffers={hasOffers} initialSubscription={loaderSubscription} initialAnalytics={analytics} />;
 }
 
 export const headers = (headersArgs) => {

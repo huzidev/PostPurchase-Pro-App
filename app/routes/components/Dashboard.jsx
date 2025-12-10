@@ -18,19 +18,53 @@ import { QuestionCircleIcon } from '@shopify/polaris-icons';
 import { GettingStarted } from './GettingStarted';
 import { useSubscription } from '../../hooks/useSubscription.jsx';
 
-export function Dashboard({ onNavigate, hasOffers = false, initialSubscription = null }) {
+export function Dashboard({ onNavigate, hasOffers = false, initialSubscription = null, initialAnalytics = null }) {
   const { subscription: hookSubscription } = useSubscription();
   
-  // Use loader subscription if available, fallback to hook subscription
+  // Use loader data if available, fallback to hook data
   const subscription = initialSubscription || hookSubscription;
-  
+  const analytics = initialAnalytics;
+
+  // Format currency
+  const formatCurrency = (amount) => {
+    if (!amount || amount === 0) return '$0';
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+    }).format(amount);
+  };
+
+  // Format percentage
+  const formatPercentage = (rate) => {
+    if (!rate || rate === 0) return '0%';
+    return `${rate.toFixed(1)}%`;
+  };
+
+  // Get stats with SSR data
   const stats = [
-    { label: 'Total Offers', value: hasOffers ? '3' : '0', change: hasOffers ? '+3 this month' : 'No offers yet' },
-    { label: 'Active Offers', value: hasOffers ? '2' : '0', change: hasOffers ? '1 paused' : 'Create your first offer' },
-    { label: 'Total Revenue', value: hasOffers ? '$24,567' : '$0', change: hasOffers ? '+12.5% vs last month' : 'Start earning revenue' },
-    { label: 'Conversion Rate', value: hasOffers ? '23.4%' : '0%', change: hasOffers ? '+2.1% vs last month' : 'Track performance' },
+    { 
+      label: 'Total Offers', 
+      value: analytics?.total_offers?.toString() || '0', 
+      change: analytics?.total_offers > 0 ? `${analytics.total_offers} created` : 'No offers yet'
+    },
+    { 
+      label: 'Active Offers', 
+      value: analytics?.active_offers?.toString() || '0', 
+      change: analytics?.active_offers > 0 ? `${analytics.active_offers} running` : 'Create your first offer'
+    },
+    { 
+      label: 'Total Revenue', 
+      value: formatCurrency(analytics?.total_revenue || 0), 
+      change: analytics?.total_revenue > 0 ? `${analytics.conversions || 0} conversions` : 'Start earning revenue'
+    },
+    { 
+      label: 'Conversion Rate', 
+      value: formatPercentage(analytics?.conversion_rate || 0), 
+      change: analytics?.impressions > 0 ? `${analytics.impressions} impressions` : 'Track performance'
+    },
   ];
 
+  // Sample data for recent offers (could be enhanced to fetch real offer data)
   const recentOffers = [
     ['Summer Sale Bundle', <Badge key="1" tone="success">Active</Badge>, '156', '34.2%', '$4,234'],
     ['Accessories Upsell', <Badge key="2" tone="success">Active</Badge>, '89', '28.1%', '$2,134'],
@@ -58,81 +92,28 @@ export function Dashboard({ onNavigate, hasOffers = false, initialSubscription =
         <Layout>
           <Layout.Section>
             <InlineGrid columns={{ xs: 1, sm: 2, md: 4 }} gap="400">
-              <Card>
-                <BlockStack gap="200">
-                  <InlineStack align="space-between" blockAlign="center">
-                    <Text as="p" variant="bodyMd" tone="subdued">
-                      Total Revenue
+              {stats.map((stat, index) => (
+                <Card key={index}>
+                  <BlockStack gap="200">
+                    <InlineStack align="space-between" blockAlign="center">
+                      <Text as="p" variant="bodyMd" tone="subdued">
+                        {stat.label}
+                      </Text>
+                      <Tooltip content={`${stat.label} metrics for your post-purchase offers`}>
+                        <Icon source={QuestionCircleIcon} tone="subdued" />
+                      </Tooltip>
+                    </InlineStack>
+                    <Text as="h2" variant="headingXl">
+                      {stat.value}
                     </Text>
-                    <Tooltip content="Total revenue generated from post-purchase offers">
-                      <Icon source={QuestionCircleIcon} tone="subdued" />
-                    </Tooltip>
-                  </InlineStack>
-                  <Text as="h2" variant="headingXl">
-                    $12,458
-                  </Text>
-                  <Text as="p" variant="bodySm" tone="success">
-                    +23.5% from last month
-                  </Text>
-                </BlockStack>
-              </Card>
+                    <Text as="p" variant="bodySm" tone={analytics?.total_revenue > 0 ? "success" : "subdued"}>
+                      {stat.change}
+                    </Text>
+                  </BlockStack>
+                </Card>
+              ))}
 
-              <Card>
-                <BlockStack gap="200">
-                  <InlineStack align="space-between" blockAlign="center">
-                    <Text as="p" variant="bodyMd" tone="subdued">
-                      Conversion Rate
-                    </Text>
-                    <Tooltip content="Percentage of customers who accepted offers">
-                      <Icon source={QuestionCircleIcon} tone="subdued" />
-                    </Tooltip>
-                  </InlineStack>
-                  <Text as="h2" variant="headingXl">
-                    18.2%
-                  </Text>
-                  <Text as="p" variant="bodySm" tone="success">
-                    +2.1% from last month
-                  </Text>
-                </BlockStack>
-              </Card>
-
-              <Card>
-                <BlockStack gap="200">
-                  <InlineStack align="space-between" blockAlign="center">
-                    <Text as="p" variant="bodyMd" tone="subdued">
-                      Offers Shown
-                    </Text>
-                    <Tooltip content="Number of times offers were displayed to customers">
-                      <Icon source={QuestionCircleIcon} tone="subdued" />
-                    </Tooltip>
-                  </InlineStack>
-                  <Text as="h2" variant="headingXl">
-                    1,847
-                  </Text>
-                  <Text as="p" variant="bodySm" tone="success">
-                    +15.3% from last month
-                  </Text>
-                </BlockStack>
-              </Card>
-
-              <Card>
-                <BlockStack gap="200">
-                  <InlineStack align="space-between" blockAlign="center">
-                    <Text as="p" variant="bodyMd" tone="subdued">
-                      Active Offers
-                    </Text>
-                    <Tooltip content="Number of currently active post-purchase offers">
-                      <Icon source={QuestionCircleIcon} tone="subdued" />
-                    </Tooltip>
-                  </InlineStack>
-                  <Text as="h2" variant="headingXl">
-                    5
-                  </Text>
-                  <Text as="p" variant="bodySm">
-                    3 offers paused
-                  </Text>
-                </BlockStack>
-              </Card>
+              {/* All stats now dynamically loaded above */}
             </InlineGrid>
           </Layout.Section>
 

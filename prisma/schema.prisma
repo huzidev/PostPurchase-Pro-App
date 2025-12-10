@@ -63,6 +63,7 @@ model Offer {
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
   analytics          Analytics[]
+  events             OfferEvent[]
   subscription       Subscription      @relation(fields: [shopify_url], references: [shopify_url])
   purchasedProducts  PurchasedProduct[]
   products           OfferProduct[]
@@ -111,10 +112,34 @@ model Analytics {
   views           Int          @default(0)
   clicks          Int          @default(0)
   conversions     Int          @default(0)
+  declines        Int          @default(0)
   revenue         Float        @default(0)
   conversion_rate Float        @default(0)
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
   offer           Offer?       @relation(fields: [offer_id], references: [id], onDelete: Cascade)
   subscription    Subscription @relation(fields: [shopify_url], references: [shopify_url])
+}
+
+model OfferEvent {
+  id                String   @id @default(cuid())
+  shopify_url       String
+  offer_id          String?
+  event_type        String   // 'impression', 'view', 'accept', 'decline'
+  customer_id       String?
+  order_id          String?
+  product_id        String?
+  variant_id        String?
+  revenue_amount    Float?   @default(0)
+  discount_amount   Float?   @default(0)
+  session_id        String?
+  user_agent        String?
+  ip_address        String?
+  referrer          String?
+  event_data        Json?    // Additional event metadata
+  createdAt         DateTime @default(now())
+  offer             Offer?   @relation(fields: [offer_id], references: [id], onDelete: Cascade)
+
+  @@index([shopify_url, event_type, createdAt])
+  @@index([offer_id, event_type, createdAt])
 }

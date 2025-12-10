@@ -18,7 +18,7 @@ import {
 
 // For local development, replace APP_URL with your local tunnel URL.
 const APP_URL = "https://post-purchase-pro-app.vercel.app";
-// const APP_URL = "https://suggestion-indicators-doom-coaching.trycloudflare.com";
+// const APP_URL = "https://first-shadows-origins-ottawa.trycloudflare.com";
 
 // Preload data from your app server to ensure that the extension loads quickly.
 extend(
@@ -206,6 +206,10 @@ export function App() {
         referenceId: inputData.initialPurchase.referenceId,
         offer: purchaseOption, // Send the complete offer object instead of just ID
         storage: storage,
+        shopDomain: inputData.shop.domain,
+        customerId: inputData.initialPurchase.customerId,
+        sessionId: inputData.sessionId,
+        userAgent: navigator.userAgent,
       }),
     })
       .then((response) => response.json())
@@ -220,8 +224,37 @@ export function App() {
     done();
   }
 
-  function declineOffer() {
+  async function declineOffer() {
     setLoading(true);
+
+    // Track decline analytics
+    try {
+      await fetch(`${APP_URL}/api/analytics/decline`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${inputData.token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          shopDomain: inputData.shop.domain,
+          offerId: purchaseOption?.originalOffer?.id,
+          customerId: inputData.initialPurchase.customerId,
+          orderId: inputData.initialPurchase.referenceId,
+          productId: purchaseOption?.changes?.[0]?.variantID?.toString(),
+          sessionId: inputData.sessionId,
+          userAgent: navigator.userAgent,
+          eventData: {
+            offerTitle: purchaseOption?.title,
+            offerContext: 'post_purchase_decline',
+            currentOfferIndex: currentOfferIndex,
+            totalOffers: offers.length,
+          },
+        }),
+      });
+    } catch (error) {
+      console.error("Error tracking decline analytics:", error);
+      // Continue with decline logic even if analytics fails
+    }
 
     if (currentOfferIndex < offers.length - 1) {
       setCurrentOfferIndex(currentOfferIndex + 1);

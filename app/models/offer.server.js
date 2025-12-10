@@ -431,6 +431,23 @@ export default class Offer {
       return false;
     }
   }
+
+  // Get count of active offers for subscription limits checking
+  async getActiveOfferCount() {
+    try {
+      const count = await db.offer.count({
+        where: {
+          shopify_url: this.shopify_url,
+          status: 'active',
+        },
+      });
+
+      return count;
+    } catch (error) {
+      console.error("Error getting active offer count:", error);
+      return 0;
+    }
+  }
 }
 
 
@@ -477,3 +494,6 @@ export function getOffers() {
 export function getSelectedOffer(offerId) {
   return OFFERS.find((offer) => offer.id === offerId);
 }
+
+// Add to the Offer class - this method should be inside the class
+// The following method should be added to the Offer class above
