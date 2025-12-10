@@ -72,7 +72,7 @@ export const action = async ({ request }) => {
         await analyticsService.recordOfferEvent({
           offerId: selectedOffer.originalOffer.id,
           eventType: 'accept',
-          customerId: body.customerId,
+          customerId: body.customerId?.toString(),
           orderId: body.referenceId,
           productId: selectedOffer.changes?.[0]?.variantID?.toString(),
           revenueAmount: revenueAmount,

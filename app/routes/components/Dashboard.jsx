@@ -18,7 +18,7 @@ import { QuestionCircleIcon } from '@shopify/polaris-icons';
 import { GettingStarted } from './GettingStarted';
 import { useSubscription } from '../../hooks/useSubscription.jsx';
 
-export function Dashboard({ onNavigate, hasOffers = false, initialSubscription = null, initialAnalytics = null }) {
+export function Dashboard({ onNavigate, hasOffers = false, initialSubscription = null, initialAnalytics = null, initialOffers = [] }) {
   const { subscription: hookSubscription } = useSubscription();
   
   // Use loader data if available, fallback to hook data
@@ -64,13 +64,19 @@ export function Dashboard({ onNavigate, hasOffers = false, initialSubscription =
     },
   ];
 
-  // Sample data for recent offers (could be enhanced to fetch real offer data)
-  const recentOffers = [
-    ['Summer Sale Bundle', <Badge key="1" tone="success">Active</Badge>, '156', '34.2%', '$4,234'],
-    ['Accessories Upsell', <Badge key="2" tone="success">Active</Badge>, '89', '28.1%', '$2,134'],
-    ['Premium Upgrade', <Badge key="3" tone="attention">Paused</Badge>, '67', '19.4%', '$1,876'],
-    ['Winter Collection', <Badge key="4" tone="success">Active</Badge>, '234', '41.2%', '$6,543'],
-  ];
+  // Real offers data from database
+  const recentOffers = initialOffers
+    .sort((a, b) => (b.analytics?.revenue || 0) - (a.analytics?.revenue || 0))
+    .slice(0, 4)
+    .map((offer) => [
+      offer.name || 'Untitled Offer',
+      <Badge key={offer.id} tone={offer.status === 'active' ? 'success' : 'warning'}>
+        {offer.status === 'active' ? 'Active' : 'Paused'}
+      </Badge>,
+      (offer.analytics?.impressions || 0).toLocaleString(),
+      formatPercentage(offer.conversionRate || 0),
+      formatCurrency(offer.analytics?.revenue || 0),
+    ]);
 
   return (
     <Page

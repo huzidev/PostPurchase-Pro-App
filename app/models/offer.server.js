@@ -448,6 +448,37 @@ export default class Offer {
       return 0;
     }
   }
+
+  // Get all offers for analytics
+  async getAllOffers() {
+    try {
+      const offers = await db.offer.findMany({
+        where: {
+          shopify_url: this.shopify_url,
+        },
+        include: {
+          products: true,
+          purchasedProducts: true,
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
+
+      return {
+        status: 200,
+        message: "Offers fetched successfully",
+        offers,
+      };
+    } catch (error) {
+      console.error("Error fetching all offers:", error);
+      return {
+        status: 500,
+        message: "Failed to fetch offers",
+        error: error.message,
+      };
+    }
+  }
 }
 
 

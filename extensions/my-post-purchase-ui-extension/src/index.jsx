@@ -18,7 +18,7 @@ import {
 
 // For local development, replace APP_URL with your local tunnel URL.
 const APP_URL = "https://post-purchase-pro-app.vercel.app";
-// const APP_URL = "https://first-shadows-origins-ottawa.trycloudflare.com";
+// const APP_URL = "https://north-antibody-config-relatives.trycloudflare.com";
 
 // Preload data from your app server to ensure that the extension loads quickly.
 extend(

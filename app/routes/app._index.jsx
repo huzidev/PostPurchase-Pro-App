@@ -24,6 +24,34 @@ export const loader = async ({ request }) => {
     const analyticsResult = await analyticsService.getDashboardAnalytics();
     const analytics = analyticsResult.status === 200 ? analyticsResult.analytics : null;
     
+    // Fetch offers with analytics for dashboard
+    const offersResult = await offerService.getAllOffers();
+    const offers = offersResult.status === 200 ? offersResult.offers : [];
+    
+    // Get analytics for each offer (limited to top 5 for performance)
+    const offersWithAnalytics = await Promise.all(
+      offers.slice(0, 5).map(async (offer) => {
+        const offerAnalyticsResult = await analyticsService.getOfferAnalytics(offer.id, 30);
+        const offerAnalytics = offerAnalyticsResult.status === 200 ? offerAnalyticsResult.analytics : [];
+        
+        // Calculate totals
+        const totals = offerAnalytics.reduce((acc, day) => {
+          acc.impressions += day.impressions || 0;
+          acc.conversions += day.conversions || 0;
+          acc.revenue += day.revenue || 0;
+          return acc;
+        }, { impressions: 0, conversions: 0, revenue: 0 });
+        
+        const conversionRate = totals.impressions > 0 ? (totals.conversions / totals.impressions) * 100 : 0;
+        
+        return {
+          ...offer,
+          analytics: totals,
+          conversionRate
+        };
+      })
+    );
+    
     // Fetch current subscription for immediate use
     const activeShopifySubscription = await subscriptionService.getActiveSubscription(
       session.shop, 
@@ -55,16 +83,16 @@ export const loader = async ({ request }) => {
       subscription = currentSubscription.subscription;
     }
     
-    return { hasOffers, subscription, analytics };
+    return { hasOffers, subscription, analytics, offers: offersWithAnalytics };
   } catch (error) {
     console.error("Error in dashboard loader:", error);
-    return { hasOffers: false, subscription: null, analytics: null };
+    return { hasOffers: false, subscription: null, analytics: null, offers: [] };
   }
 };
 
 export default function Index() {
   const navigate = useNavigate();
-  const { hasOffers, subscription: loaderSubscription, analytics } = useLoaderData();
+  const { hasOffers, subscription: loaderSubscription, analytics, offers } = useLoaderData();
 
   const onNavigate = (page) => {
     switch (page) {
@@ -83,7 +111,7 @@ export default function Index() {
     }
   };
 
-  return <Dashboard onNavigate={onNavigate} hasOffers={hasOffers} initialSubscription={loaderSubscription} initialAnalytics={analytics} />;
+  return <Dashboard onNavigate={onNavigate} hasOffers={hasOffers} initialSubscription={loaderSubscription} initialAnalytics={analytics} initialOffers={offers} />;
 }
 
 export const headers = (headersArgs) => {
