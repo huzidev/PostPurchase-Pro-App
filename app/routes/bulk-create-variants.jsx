@@ -56,6 +56,7 @@ export const action = async ({ request }) => {
     const productId = formData.get("productId");
     const datesData = formData.get("dates");
     const timeSlotsData = formData.get("timeSlots");
+    const quantitiesData = formData.get("quantities");
     const price = parseFloat(formData.get("price")) || 0;
     const compareAtPrice = parseFloat(formData.get("compareAtPrice")) || 0;
     const dateOptionId = formData.get("dateOptionId");
@@ -64,6 +65,7 @@ export const action = async ({ request }) => {
     try {
       const dates = JSON.parse(datesData || "[]");
       const timeSlots = JSON.parse(timeSlotsData || "[]");
+      const quantities = JSON.parse(quantitiesData || "{}");
       
       if (!dates.length || timeSlots.length === 0 || !dateOptionId || !timeslotOptionId) {
         return { 
@@ -76,13 +78,14 @@ export const action = async ({ request }) => {
       const variants = [];
       dates.forEach(date => {
         timeSlots.forEach(timeSlot => {
+          const quantity = quantities[timeSlot] ?? 22; // Use custom quantity or default to 22
           variants.push({
             price: price,
             compareAtPrice: compareAtPrice,
             inventoryQuantities: [
               {
                 locationId: "gid://shopify/Location/109539918144", // Shop location
-                availableQuantity: 22
+                availableQuantity: quantity
               }
             ],
             optionValues: [
@@ -133,6 +136,7 @@ export default function BulkCreateVariants() {
   const [creatingVariants, setCreatingVariants] = useState({});
   const [addedDates, setAddedDates] = useState({});
   const [successMessage, setSuccessMessage] = useState('');
+  const [timeSlotQuantities, setTimeSlotQuantities] = useState({});
 
   // Auto-refresh products when option values are added/removed
   useEffect(() => {
@@ -179,6 +183,12 @@ export default function BulkCreateVariants() {
     setAddedDates(prev => ({
       ...prev,
       [productId]: []
+    }));
+    
+    // Reset quantities for this product
+    setTimeSlotQuantities(prev => ({
+      ...prev,
+      [productId]: {}
     }));
     
     // Uncheck all time slot checkboxes for this product
@@ -247,6 +257,7 @@ export default function BulkCreateVariants() {
     formData.set("productId", productId);
     formData.set("dates", JSON.stringify(dates));
     formData.set("timeSlots", JSON.stringify(timeSlots));
+    formData.set("quantities", JSON.stringify(timeSlotQuantities[productId] || {}));
     formData.set("price", price);
     formData.set("compareAtPrice", compareAtPrice || "0");
     
@@ -675,37 +686,68 @@ export default function BulkCreateVariants() {
 
                   {/* Time Slots Section */}
                   <div style={{marginBottom: '20px', padding: '16px', border: '1px solid #e5e7eb', borderRadius: '8px', backgroundColor: '#fefefe'}}>
-                    <label style={{...styles.label, fontSize: '13px', marginBottom: '12px', display: 'block', fontWeight: '600'}}>Select Time Slots</label>
-                    <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '8px'}}>
+                    <label style={{...styles.label, fontSize: '13px', marginBottom: '12px', display: 'block', fontWeight: '600'}}>Select Time Slots & Quantities</label>
+                    <div style={{display: 'flex', flexDirection: 'column', gap: '12px'}}>
                       {['9am', '10:45am', '12:30pm', '2:15pm', '4:00pm'].map(slot => (
-                        <label key={slot} style={{
+                        <div key={slot} style={{
                           display: 'flex',
                           alignItems: 'center',
-                          gap: '8px',
-                          padding: '8px 12px',
+                          gap: '12px',
+                          padding: '12px',
                           border: '1px solid #d1d5db',
                           borderRadius: '6px',
-                          cursor: 'pointer',
-                          fontSize: '13px',
                           backgroundColor: '#fafafa',
                           transition: 'all 0.2s ease'
-                        }}
-                        onMouseOver={(e) => e.target.style.backgroundColor = '#f0f9ff'}
-                        onMouseOut={(e) => e.target.style.backgroundColor = '#fafafa'}
-                        >
-                          <input
-                            type="checkbox"
-                            name={slot}
-                            value={slot}
-                            style={{
-                              cursor: 'pointer',
-                              width: '16px',
-                              height: '16px',
-                              accentColor: '#3b82f6'
-                            }}
-                          />
-                          <span style={{fontWeight: '500'}}>{slot}</span>
-                        </label>
+                        }}>
+                          <label style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            cursor: 'pointer',
+                            fontSize: '13px',
+                            minWidth: '120px'
+                          }}>
+                            <input
+                              type="checkbox"
+                              name={slot}
+                              value={slot}
+                              style={{
+                                cursor: 'pointer',
+                                width: '16px',
+                                height: '16px',
+                                accentColor: '#3b82f6'
+                              }}
+                            />
+                            <span style={{fontWeight: '500'}}>{slot}</span>
+                          </label>
+                          <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
+                            <label style={{fontSize: '12px', color: '#6b7280', minWidth: '30px'}}>Qty:</label>
+                            <input
+                              type="number"
+                              min="0"
+                              value={timeSlotQuantities[product.id]?.[slot] ?? 22}
+                              onChange={(e) => {
+                                const value = parseInt(e.target.value);
+                                const finalValue = isNaN(value) ? 0 : value;
+                                setTimeSlotQuantities(prev => ({
+                                  ...prev,
+                                  [product.id]: {
+                                    ...prev[product.id],
+                                    [slot]: finalValue
+                                  }
+                                }));
+                              }}
+                              style={{
+                                width: '80px',
+                                padding: '4px 8px',
+                                border: '1px solid #d1d5db',
+                                borderRadius: '4px',
+                                fontSize: '13px',
+                                textAlign: 'center'
+                              }}
+                            />
+                          </div>
+                        </div>
                       ))}
                     </div>
                   </div>
