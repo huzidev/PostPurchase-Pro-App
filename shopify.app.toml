@@ -2,7 +2,7 @@
 
 client_id = "23dc6fedf5b22e45b3316d166cfd1593"
 name = "PostPurchase Pro"
-application_url = "post-purchase-pro-app.vercel.app"
+application_url = "https://post-purchase-pro-app.vercel.app/"
 embedded = true
 
 [build]
@@ -21,7 +21,7 @@ api_version = "2026-01"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "write_products"
+scopes = "write_products,read_locations,read_inventory,read_markets_home"
 
 [auth]
 redirect_urls = ["https://post-purchase-pro-app.vercel.app/auth/callback",
