@@ -1,18 +1,15 @@
-import VariantCreate from "../mutations/variantCreate.js";
-import { authenticate } from "../shopify.server";
+import { createProductVariants, getProductOptions, getActiveProducts } from "../mutations/variantCreate.js";
 import { useState, useEffect } from "react";
 import { useSubmit, useActionData } from "react-router";
 
 export const action = async ({ request }) => {
-  const { admin } = await authenticate.admin(request);
-  const variantCreate = new VariantCreate(admin.graphql);
   const formData = await request.formData();
   const actionType = formData.get("actionType");
   
   if (actionType === "fetchProducts") {
     const cursor = formData.get("cursor");
     
-    return await variantCreate.getActiveProducts(cursor);
+    return await getActiveProducts(cursor);
   }
   
   if (actionType === "addOptionValue") {
@@ -52,7 +49,7 @@ export const action = async ({ request }) => {
   if (actionType === "fetchProduct") {
     const productId = formData.get("productId");
     
-    return await variantCreate.getProductOptions(productId);
+    return await getProductOptions(productId);
   }
   
   if (actionType === "createVariants") {
@@ -105,7 +102,7 @@ export const action = async ({ request }) => {
         });
       });
       
-      const result = await variantCreate.createProductVariants({
+      const result = await createProductVariants({
         productId,
         variants
       });
