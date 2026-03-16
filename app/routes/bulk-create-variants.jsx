@@ -6,6 +6,8 @@ import { authenticate } from "../shopify.server";
 export const action = async ({ request }) => {
     const { admin } = await authenticate.admin(request);
     
+  console.log("SW what is admin", admin);
+
   const formData = await request.formData();
   const actionType = formData.get("actionType");
   
